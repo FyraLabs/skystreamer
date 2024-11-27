@@ -225,14 +225,14 @@ async def process_data(post: dict) -> None:
     # Let's tag replies as well!
 
     for record in embed["record"]:
-        record_index = bsky_post_index(record)
+        record_index = bsky_post_index(record["cid"])
         logger.debug(
             f"Linking post {surreal_post_index} to record {record_index} due to embed"
         )
         await db.query(f"RELATE {surreal_post_index}->quoted->{record_index}")
 
     for record_with_media in embed["record_with_media"]:
-        record_with_media_index = bsky_post_index(record_with_media)
+        record_with_media_index = bsky_post_index(record_with_media["cid"])
         logger.debug(
             f"Linking post {surreal_post_index} to record with media {record_with_media_index} due to embed"
         )
@@ -263,7 +263,9 @@ async def process_data(post: dict) -> None:
 
     pass
 
+
 executor = ThreadPoolExecutor(max_workers=6)
+
 
 async def main(firehose_client: AsyncFirehoseSubscribeReposClient) -> None:
     await db.connect()
