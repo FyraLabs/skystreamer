@@ -1,4 +1,5 @@
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import os
 import signal
 import time
@@ -111,6 +112,7 @@ def bsky_user_index(idx: str) -> str:
 
 
 async def process_data(post: dict) -> None:
+    logger.debug(f"Processing post: {post['uri']}")
     author = post["author"]
     record = post["record"]
     post_id = post["uri"].split("/")[-1]
@@ -261,6 +263,7 @@ async def process_data(post: dict) -> None:
 
     pass
 
+executor = ThreadPoolExecutor(max_workers=6)
 
 async def main(firehose_client: AsyncFirehoseSubscribeReposClient) -> None:
     await db.connect()
@@ -300,7 +303,7 @@ async def main(firehose_client: AsyncFirehoseSubscribeReposClient) -> None:
             #     f"NEW POST [CREATED_AT={record.created_at}][AUTHOR={author}]: {inlined_text}"
             # )
 
-            await process_data(created_post)
+            await asyncio.create_task(process_data(created_post))
 
     await client.start(on_message_handler)
 
@@ -318,5 +321,4 @@ if __name__ == "__main__":
 
     client = AsyncFirehoseSubscribeReposClient(params)
 
-    # use run() for a higher Python version
     asyncio.run(main(client))
