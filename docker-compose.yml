@@ -1,0 +1,18 @@
+name: bsky-data
+services:
+  scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - SURREAL_URI=ws://192.168.1.37:8808
+# services:
+#     surrealdb:
+#         user: root
+#         pull_policy: always
+#         ports:
+#             - 8080:8000
+#         volumes:
+#             - $PWD/db:/container-dir
+#         image: surrealdb/surrealdb:latest
+#         command: start --user root --pass root rocksdb:/container-dir/mydatabase.db
