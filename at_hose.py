@@ -141,7 +141,6 @@ async def process_data(post: dict) -> None:
     # print(f"Post ID: {post_id}")
 
     # print(f"Post Index: {post_index}")
-    # await db.select
     # Check if index already exists
     surreal_post_index = bsky_post_index(post_index)
     conflict_check = await db.query(
@@ -158,20 +157,30 @@ async def process_data(post: dict) -> None:
         "videos": [],
         "external": [],
         "record": [],
-        "record_with_media": [],
     }
 
     # Okay, let's record some embeds
     if record.embed:
         if isinstance(record.embed, models.AppBskyEmbedImages.Main):
             for image in record.embed.images:
-                embed["images"].append(image.model_computed_fields)
+                # print(image.image.model_dump())
+                embed["images"].append(
+                    {
+                        "blob_ref": image.image.model_dump(),
+                        "cid": image.image.cid.encode(),
+                    }
+                )
 
         if isinstance(record.embed, models.AppBskyEmbedVideo.Main):
-            embed["videos"].append(record.embed.video.model_computed_fields)
+            embed["videos"].append(
+                {
+                    "blob_ref": record.embed.video.model_dump(),
+                    "cid": record.embed.video.cid.encode(),
+                }
+            )
 
         if isinstance(record.embed, models.AppBskyEmbedExternal.Main):
-            embed["external"].append(record.embed.external.model_computed_fields)
+            embed["external"].append(record.embed.external.model_dump())
 
         if isinstance(record.embed, models.AppBskyEmbedRecord.Main):
             embed["record"].append(
@@ -180,14 +189,37 @@ async def process_data(post: dict) -> None:
                     "fields": record.embed.record.model_computed_fields,
                 }
             )
+            # print(record.embed.record.model_dump_json())
 
         if isinstance(record.embed, models.AppBskyEmbedRecordWithMedia.Main):
-            embed["record_with_media"].append(
+            # a_media = []
+            for image in record.embed.media:
+                # atproto_client.models.app.bsky.embed.images.Main | atproto_client.models.app.bsky.embed.video.Main | atproto_client.models.app.bsky.embed.external.Main
+                if isinstance(image, models.AppBskyEmbedImages.Main):
+                    for img in image.images:
+                        embed["images"].append(
+                            {
+                                "blob_ref": img.image.model_dump(),
+                                "cid": img.image.cid.encode(),
+                            }
+                        )
+                if isinstance(image, models.AppBskyEmbedVideo.Main):
+                    embed["videos"].append(
+                        {
+                            "blob_ref": image.video.model_dump(),
+                            "cid": image.video.cid.encode(),
+                        }
+                    )
+                if isinstance(image, models.AppBskyEmbedExternal.Main):
+                    embed["external"].append(image.external.model_dump())
+            embed["record"].append(
                 {
                     "cid": record.embed.record.record.cid,
-                    "fields": record.embed.model_computed_fields,
+                    "fields": record.embed.model_dump(),
                 }
             )
+
+    # print(embed)
 
     # if record.text == "":
     #     logger.warning(f"Empty post, not adding: {post_index}")
@@ -204,7 +236,10 @@ async def process_data(post: dict) -> None:
             "language": record.langs,
             "labels": labels,
             "reply": reply,
-            "embed": embed,
+            "images": embed["images"],
+            "videos": embed["videos"],
+            "quotes": embed["record"],
+            "external_links": embed["external"],
             "tags": record.tags,
         },
     )
@@ -231,14 +266,14 @@ async def process_data(post: dict) -> None:
         )
         await db.query(f"RELATE {surreal_post_index}->quoted->{record_index}")
 
-    for record_with_media in embed["record_with_media"]:
-        record_with_media_index = bsky_post_index(record_with_media["cid"])
-        logger.debug(
-            f"Linking post {surreal_post_index} to record with media {record_with_media_index} due to embed"
-        )
-        await db.query(
-            f"RELATE {surreal_post_index}->quoted_with_media->{record_with_media_index}"
-        )
+    # for record_with_media in embed["record_with_media"]:
+    #     record_with_media_index = bsky_post_index(record_with_media["cid"])
+    #     logger.debug(
+    #         f"Linking post {surreal_post_index} to record with media {record_with_media_index} due to embed"
+    #     )
+    #     await db.query(
+    #         f"RELATE {surreal_post_index}->quoted_with_media->{record_with_media_index}"
+    #     )
 
     if reply:
         og_post = bsky_post_index(post_index)
@@ -256,9 +291,9 @@ async def process_data(post: dict) -> None:
         #     return
 
         logger.debug(f"Linking post {og_post} to parent {parent} and root {root}")
-        resparent = await db.query(f"RELATE {og_post}->reply->{parent}")
+        await db.query(f"RELATE {og_post}->reply->{parent}")
         # print(resparent)
-        resroot = await db.query(f"RELATE {og_post}->reply_root->{root}")
+        await db.query(f"RELATE {og_post}->reply_root->{root}")
         # print(resroot)
 
     pass
