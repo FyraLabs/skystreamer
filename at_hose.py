@@ -265,13 +265,13 @@ async def process_data(post: dict) -> None:
             break
         except Exception as e:
             if "already exists" in str(e):
-                break
+                return
             elif "Resource busy" in str(e):
                 logger.warning("Resource busy, retrying...")
                 await asyncio.sleep(0.2)
             else:
                 logger.error(f"Error creating post: {e}")
-                break
+                return
 
     # Check if user already exists
     while True:
@@ -280,13 +280,13 @@ async def process_data(post: dict) -> None:
             break
         except Exception as e:
             if "already exists" in str(e):
-                break
+                return
             elif "Resource busy" in str(e):
                 logger.warning("Resource busy, retrying...")
                 await asyncio.sleep(0.2)
             else:
                 logger.error(f"Error creating user: {e}")
-                break
+                return
 
     # Tag author
     author_index = bsky_user_index(author)
