@@ -269,8 +269,6 @@ async def process_data(post: dict) -> None:
 
     # Check if user already exists
     try:
-        # surreal_user_index = bsky_user_index(author)
-
         await db.create("bsky_user", {"id": author})
 
     except Exception as e:
@@ -291,15 +289,6 @@ async def process_data(post: dict) -> None:
             f"Linking post {surreal_post_index} to record {record_index} due to embed"
         )
         await db.query(f"RELATE {surreal_post_index}->quoted->{record_index}")
-
-    # for record_with_media in embed["record_with_media"]:
-    #     record_with_media_index = bsky_post_index(record_with_media["cid"])
-    #     logger.debug(
-    #         f"Linking post {surreal_post_index} to record with media {record_with_media_index} due to embed"
-    #     )
-    #     await db.query(
-    #         f"RELATE {surreal_post_index}->quoted_with_media->{record_with_media_index}"
-    #     )
 
     if reply:
         og_post = bsky_post_index(post_index)
