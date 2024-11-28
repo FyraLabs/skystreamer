@@ -242,41 +242,51 @@ async def process_data(post: dict) -> None:
     # if record.text == "":
     #     logger.warning(f"Empty post, not adding: {post_index}")
     #     return
-    try:
-        await db.create(
-            thing="bsky_feed_post",
-            data={
-                "id": post_index,
-                "post_id": post_id,
-                "author": author,
-                "text": record.text,
-                "created_at": record.created_at,
-                "language": record.langs,
-                "labels": labels,
-                "reply": reply,
-                "images": embed["images"],
-                "videos": embed["videos"],
-                "quotes": embed["record"],
-                "external_links": embed["external"],
-                "tags": record.tags,
-            },
-        )
-    except Exception as e:
-        if "already exists" in str(e):
-            pass
-        else:
-            logger.error(f"Error creating post: {e}")
+    while True:
+        try:
+            await db.create(
+                thing="bsky_feed_post",
+                data={
+                    "id": post_index,
+                    "post_id": post_id,
+                    "author": author,
+                    "text": record.text,
+                    "created_at": record.created_at,
+                    "language": record.langs,
+                    "labels": labels,
+                    "reply": reply,
+                    "images": embed["images"],
+                    "videos": embed["videos"],
+                    "quotes": embed["record"],
+                    "external_links": embed["external"],
+                    "tags": record.tags,
+                },
+            )
+            break
+        except Exception as e:
+            if "already exists" in str(e):
+                break
+            elif "Resource busy" in str(e):
+                logger.warning("Resource busy, retrying...")
+                await asyncio.sleep(0.2)
+            else:
+                logger.error(f"Error creating post: {e}")
+                break
 
     # Check if user already exists
-    try:
-        await db.create("bsky_user", {"id": author})
-
-    except Exception as e:
-        # logger.error(f"Error creating user: {e}")
-        if "already exists" in str(e):
-            pass
-        else:
-            logger.error(f"Error creating user: {e}")
+    while True:
+        try:
+            await db.create("bsky_user", {"id": author})
+            break
+        except Exception as e:
+            if "already exists" in str(e):
+                break
+            elif "Resource busy" in str(e):
+                logger.warning("Resource busy, retrying...")
+                await asyncio.sleep(0.2)
+            else:
+                logger.error(f"Error creating user: {e}")
+                break
 
     # Tag author
     author_index = bsky_user_index(author)
