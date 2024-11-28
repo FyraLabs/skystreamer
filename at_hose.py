@@ -18,9 +18,11 @@ from atproto import (
     AtUri,
     firehose_models,
     models,
+    AsyncClient,
     parse_subscribe_repos_message,
 )
 
+async_bsky_client = AsyncClient()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,6 +35,8 @@ SURREAL_PASSWORD = os.getenv("SURREAL_PASSWORD", "root")
 SURREAL_NAMESPACE = os.getenv("SURREAL_NAMESPACE", "bsky")
 SURREAL_DATABASE = os.getenv("SURREAL_DATABASE", "bsky")
 
+DOWNLOAD_BLOBS = os.getenv("DOWNLOAD_BLOBS", False)
+
 # surrealdb uri
 db = AsyncSurrealDB(SURREAL_URI)
 
@@ -42,6 +46,11 @@ _INTERESTED_RECORDS = {
     models.ids.AppBskyFeedPost: models.AppBskyFeedPost,
     # models.ids.AppBskyGraphFollow: models.AppBskyGraphFollow,
 }
+
+
+async def download_blob(did: str, cid: str) -> bytes:
+    blob = await async_bsky_client.com.atproto.sync.get_blob({"did": did, "cid": cid})
+    return blob
 
 
 def _get_ops_by_type(commit: models.ComAtprotoSyncSubscribeRepos.Commit) -> defaultdict:
@@ -182,20 +191,22 @@ async def process_data(post: dict) -> None:
         if isinstance(record.embed, models.AppBskyEmbedImages.Main):
             for image in record.embed.images:
                 # print(image.image.model_dump())
-                embed["images"].append(
-                    {
-                        "blob_ref": image.image.model_dump(),
-                        "cid": image.image.cid.encode(),
-                    }
-                )
+                image_data = {
+                    "blob_ref": image.image.model_dump(),
+                    "cid": image.image.cid.encode(),
+                }
+                if DOWNLOAD_BLOBS:
+                    image_data["data"] = await download_blob(author, image.image.cid)
+                embed["images"].append(image_data)
 
         if isinstance(record.embed, models.AppBskyEmbedVideo.Main):
-            embed["videos"].append(
-                {
-                    "blob_ref": record.embed.video.model_dump(),
-                    "cid": record.embed.video.cid.encode(),
-                }
-            )
+            video_data = {
+                "blob_ref": record.embed.video.model_dump(),
+                "cid": record.embed.video.cid.encode(),
+            }
+            if DOWNLOAD_BLOBS:
+                video_data["data"] = await download_blob(author, record.embed.video.cid)
+            embed["videos"].append(video_data)
 
         if isinstance(record.embed, models.AppBskyEmbedExternal.Main):
             embed["external"].append(record.embed.external.model_dump())
@@ -215,19 +226,21 @@ async def process_data(post: dict) -> None:
                 # atproto_client.models.app.bsky.embed.images.Main | atproto_client.models.app.bsky.embed.video.Main | atproto_client.models.app.bsky.embed.external.Main
                 if isinstance(image, models.AppBskyEmbedImages.Main):
                     for img in image.images:
-                        embed["images"].append(
-                            {
-                                "blob_ref": img.image.model_dump(),
-                                "cid": img.image.cid.encode(),
-                            }
-                        )
-                if isinstance(image, models.AppBskyEmbedVideo.Main):
-                    embed["videos"].append(
-                        {
-                            "blob_ref": image.video.model_dump(),
-                            "cid": image.video.cid.encode(),
+                        image_data = {
+                            "blob_ref": img.image.model_dump(),
+                            "cid": img.image.cid.encode(),
                         }
-                    )
+                        if DOWNLOAD_BLOBS:
+                            image_data["data"] = await download_blob(author, img.image.cid)
+                        embed["images"].append(image_data)
+                if isinstance(image, models.AppBskyEmbedVideo.Main):
+                    video_data = {
+                        "blob_ref": image.video.model_dump(),
+                        "cid": image.video.cid.encode(),
+                    }
+                    if DOWNLOAD_BLOBS:
+                        video_data["data"] = await download_blob(author, image.video.cid)
+                    embed["videos"].append(video_data)
                 if isinstance(image, models.AppBskyEmbedExternal.Main):
                     embed["external"].append(image.external.model_dump())
             embed["record"].append(
@@ -313,13 +326,14 @@ async def process_data(post: dict) -> None:
     pass
 
 
-executor = ThreadPoolExecutor(max_workers=6)
-
+#executor = ThreadPoolExecutor(max_workers=6)
 
 async def main(firehose_client: AsyncFirehoseSubscribeReposClient) -> None:
     await db.connect()
     await db.use(namespace=SURREAL_NAMESPACE, database=SURREAL_DATABASE)
     await db.sign_in(password=SURREAL_PASSWORD, username=SURREAL_USERNAME)
+
+    queue = asyncio.Queue()
 
     @measure_events_per_second
     async def on_message_handler(message: firehose_models.MessageFrame) -> None:
@@ -336,12 +350,37 @@ async def main(firehose_client: AsyncFirehoseSubscribeReposClient) -> None:
             return
 
         ops = _get_ops_by_type(commit)
-        await asyncio.gather(
-            *[process_data(created_post) for created_post in ops[models.ids.AppBskyFeedPost]["created"]]
-        )
+        for created_post in ops[models.ids.AppBskyFeedPost]["created"]:
+            await queue.put(created_post)
+
+    async def worker() -> None:
+        while True:
+            post = await queue.get()
+            try:
+                # logger.info(f"Worker {asyncio.current_task().get_name()} processing post: {post['uri']}")
+                await process_data(post)
+            finally:
+                queue.task_done()
+
+    workers = [asyncio.create_task(worker()) for _ in range(6)]
+    loop = asyncio.get_running_loop()
+    async def shutdown() -> None:
+        await client.stop()
+        for worker_task in workers:
+            worker_task.cancel()
+        await db.close()
+        loop.stop()
+
+    loop.add_signal_handler(signal.SIGINT, lambda: asyncio.create_task(shutdown()))
 
     await client.start(on_message_handler)
+    await queue.join()
 
+    for worker_task in workers:
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
 
 if __name__ == "__main__":
     signal.signal(
