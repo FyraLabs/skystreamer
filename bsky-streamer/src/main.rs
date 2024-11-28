@@ -1,15 +1,14 @@
 // use anyhow::{anyhow, Result};
 use crate::types::Frame;
-use atrium_api::app::bsky::feed::post::Record;
-use atrium_api::app::bsky::feed::Post as BPost;
-use atrium_api::com::atproto::sync::subscribe_repos::{Commit, NSID};
-use atrium_api::types::{CidLink, Collection};
-use color_eyre::eyre::eyre;
-use color_eyre::Result;
+use atrium_api::{
+    app::bsky::feed::{post::Record, Post as BPost},
+    com::atproto::sync::subscribe_repos::{Commit, NSID},
+    types::{CidLink, Collection},
+};
+use color_eyre::{eyre::eyre, Result};
 use futures::StreamExt;
 use tokio::net::TcpStream;
-use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use types::{CidOld, CommitHandler, PostData, Subscription};
 use update_rate::RateCounter;
 
@@ -84,7 +83,6 @@ impl CommitHandler for Firehose {
 
             // tracing::info!("Received post: {:#?}", post,);
 
-
             // let jsonl = serde_json::to_string(&post)?;
 
             // // append to file called "posts.jsonl"
@@ -96,7 +94,6 @@ impl CommitHandler for Firehose {
             //     .await?;
 
             // tokio::io::AsyncWriteExt::write_all(&mut file, format!("{}\n", jsonl).as_bytes()).await?;
-
 
             self.update_stats();
         }
