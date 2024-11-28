@@ -279,17 +279,6 @@ async def process_data(post: dict) -> None:
         og_post = bsky_post_index(post_index)
         parent = bsky_post_index(reply["parent"])
         root = bsky_post_index(reply["root"])
-
-        # root_post_check = await db.query(f"SELECT * FROM bsky_feed_post WHERE id = {root}")
-        # if root_post_check[0]["result"] == []:
-        #     logger.warning(f"Root post not found, not linking: {root}")
-        #     return
-
-        # parent_post_check = await db.query(f"SELECT * FROM bsky_feed_post WHERE id = {parent}")
-        # if parent_post_check[0]["result"] == []:
-        #     logger.warning(f"Parent post not found, not linking: {parent}")
-        #     return
-
         logger.debug(f"Linking post {og_post} to parent {parent} and root {root}")
         await db.query(f"RELATE {og_post}->reply->{parent}")
         # print(resparent)
@@ -300,7 +289,6 @@ async def process_data(post: dict) -> None:
 
 
 executor = ThreadPoolExecutor(max_workers=6)
-
 
 async def main(firehose_client: AsyncFirehoseSubscribeReposClient) -> None:
     await db.connect()
@@ -322,25 +310,11 @@ async def main(firehose_client: AsyncFirehoseSubscribeReposClient) -> None:
             return
 
         ops = _get_ops_by_type(commit)
-        for created_post in ops[models.ids.AppBskyFeedPost]["created"]:
-            # print(created_post)
-            # print(json.dumps(created_post))
-            # cid = created_post["cid"]
-            # author = created_post["author"]
-            # record = created_post["record"]
-            # post_id = created_post["uri"].split("/")[-1]
-
-            # inlined_text = record.text.replace("\n", " ")
-            # print(f"Post ID: {post_id}")
-            # print(record)
-
-            # format as dict
-
-            # logger.debug(
-            #     f"NEW POST [CREATED_AT={record.created_at}][AUTHOR={author}]: {inlined_text}"
-            # )
-
-            await asyncio.create_task(process_data(created_post))
+        tasks = [
+            asyncio.create_task(process_data(created_post))
+            for created_post in ops[models.ids.AppBskyFeedPost]["created"]
+        ]
+        await asyncio.gather(*tasks)
 
     await client.start(on_message_handler)
 
