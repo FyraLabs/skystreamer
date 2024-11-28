@@ -95,6 +95,7 @@ def measure_events_per_second(func: callable) -> callable:
 
     return wrapper
 
+
 def measure_posts_per_second(func: callable) -> callable:
     def wrapper(*args) -> Any:
         wrapper.calls += 1
@@ -126,6 +127,7 @@ def bsky_post_index(idx: str) -> str:
 
 def bsky_user_index(idx: str) -> str:
     return f"bsky_user:⟨{idx}⟩"
+
 
 @measure_posts_per_second
 async def process_data(post: dict) -> None:
@@ -160,14 +162,13 @@ async def process_data(post: dict) -> None:
     # print(f"Post Index: {post_index}")
     # Check if index already exists
     surreal_post_index = bsky_post_index(post_index)
-    conflict_check = await db.query(
-        f"SELECT * FROM bsky_feed_post WHERE id = {surreal_post_index}"
-    )
-    # print(a)
+    # conflict_check = await db.query(
+    #     f"SELECT * FROM bsky_feed_post WHERE id = {surreal_post_index}"
+    # )
 
-    if conflict_check[0]["result"]:
-        logger.warning(f"Post already exists, skipping: {post_index}")
-        return
+    # if conflict_check[0]["result"]:
+    #     logger.warning(f"Post already exists, skipping: {post_index}")
+    #     return
 
     embed = {
         "images": [],
@@ -241,39 +242,47 @@ async def process_data(post: dict) -> None:
     # if record.text == "":
     #     logger.warning(f"Empty post, not adding: {post_index}")
     #     return
-
-    await db.create(
-        thing="bsky_feed_post",
-        data={
-            "id": post_index,
-            "post_id": post_id,
-            "author": author,
-            "text": record.text,
-            "created_at": record.created_at,
-            "language": record.langs,
-            "labels": labels,
-            "reply": reply,
-            "images": embed["images"],
-            "videos": embed["videos"],
-            "quotes": embed["record"],
-            "external_links": embed["external"],
-            "tags": record.tags,
-        },
-    )
+    try:
+        await db.create(
+            thing="bsky_feed_post",
+            data={
+                "id": post_index,
+                "post_id": post_id,
+                "author": author,
+                "text": record.text,
+                "created_at": record.created_at,
+                "language": record.langs,
+                "labels": labels,
+                "reply": reply,
+                "images": embed["images"],
+                "videos": embed["videos"],
+                "quotes": embed["record"],
+                "external_links": embed["external"],
+                "tags": record.tags,
+            },
+        )
+    except Exception as e:
+        if "already exists" in str(e):
+            pass
+        else:
+            logger.error(f"Error creating post: {e}")
 
     # Check if user already exists
-    surreal_user_index = bsky_user_index(author)
-    user_conflict_check = await db.query(
-        f"SELECT * FROM bsky_user WHERE id = {surreal_user_index}"
-    )
+    try:
+        # surreal_user_index = bsky_user_index(author)
 
-    if not user_conflict_check[0]["result"]:
         await db.create("bsky_user", {"id": author})
+
+    except Exception as e:
+        # logger.error(f"Error creating user: {e}")
+        if "already exists" in str(e):
+            pass
+        else:
+            logger.error(f"Error creating user: {e}")
 
     # Tag author
     author_index = bsky_user_index(author)
     await db.query(f"RELATE {author_index}->posted->{surreal_post_index}")
-
     # Let's tag replies as well!
 
     for record in embed["record"]:
@@ -307,6 +316,7 @@ async def process_data(post: dict) -> None:
 
 executor = ThreadPoolExecutor(max_workers=6)
 
+
 async def main(firehose_client: AsyncFirehoseSubscribeReposClient) -> None:
     await db.connect()
     await db.use(namespace=SURREAL_NAMESPACE, database=SURREAL_DATABASE)
@@ -327,11 +337,8 @@ async def main(firehose_client: AsyncFirehoseSubscribeReposClient) -> None:
             return
 
         ops = _get_ops_by_type(commit)
-        tasks = [
-            asyncio.create_task(process_data(created_post))
-            for created_post in ops[models.ids.AppBskyFeedPost]["created"]
-        ]
-        await asyncio.gather(*tasks)
+        for created_post in ops[models.ids.AppBskyFeedPost]["created"]:
+            await process_data(created_post)
 
     await client.start(on_message_handler)
 
