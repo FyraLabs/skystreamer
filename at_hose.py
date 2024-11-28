@@ -95,6 +95,23 @@ def measure_events_per_second(func: callable) -> callable:
 
     return wrapper
 
+def measure_posts_per_second(func: callable) -> callable:
+    def wrapper(*args) -> Any:
+        wrapper.calls += 1
+        cur_time = time.time()
+
+        if cur_time - wrapper.start_time >= 1:
+            logger.info(f"POSTS PROCESSED: {wrapper.calls} posts/second")
+            wrapper.start_time = cur_time
+            wrapper.calls = 0
+
+        return func(*args)
+
+    wrapper.calls = 0
+    wrapper.start_time = time.time()
+
+    return wrapper
+
 
 async def signal_handler(_: int, __: FrameType) -> None:
     print("Keyboard interrupt received. Stopping...")
@@ -110,7 +127,7 @@ def bsky_post_index(idx: str) -> str:
 def bsky_user_index(idx: str) -> str:
     return f"bsky_user:⟨{idx}⟩"
 
-
+@measure_posts_per_second
 async def process_data(post: dict) -> None:
     logger.debug(f"Processing post: {post['uri']}")
     author = post["author"]
