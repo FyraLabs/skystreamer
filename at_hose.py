@@ -326,8 +326,9 @@ async def main(firehose_client: AsyncFirehoseSubscribeReposClient) -> None:
             return
 
         ops = _get_ops_by_type(commit)
-        for created_post in ops[models.ids.AppBskyFeedPost]["created"]:
-            await process_data(created_post)
+        await asyncio.gather(
+            *[process_data(created_post) for created_post in ops[models.ids.AppBskyFeedPost]["created"]]
+        )
 
     await client.start(on_message_handler)
 
