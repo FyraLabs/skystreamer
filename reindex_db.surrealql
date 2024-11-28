@@ -1,0 +1,9 @@
+# Reindex the database and redo graph connections, removing duplicates
+# and ensuring that all connections are correct.
+
+# Delete all edge tables
+
+
+FOR $post IN (SELECT * FROM bsky_feed_post) {
+    
+};

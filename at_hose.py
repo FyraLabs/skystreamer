@@ -1,5 +1,4 @@
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 import os
 import signal
 import time
@@ -337,19 +336,25 @@ async def main(firehose_client: AsyncFirehoseSubscribeReposClient) -> None:
 
     @measure_events_per_second
     async def on_message_handler(message: firehose_models.MessageFrame) -> None:
+        # For each message we get we parse it
         commit = parse_subscribe_repos_message(message)
+        # We only accept commits
         if not isinstance(commit, models.ComAtprotoSyncSubscribeRepos.Commit):
             return
 
+        # Update the cursor every 20 commits
         if commit.seq % 20 == 0:
             firehose_client.update_params(
                 models.ComAtprotoSyncSubscribeRepos.Params(cursor=commit.seq)
             )
 
+        # We only care about commits with blocks
         if not commit.blocks:
             return
 
+        # Now, check the ops in the commit
         ops = _get_ops_by_type(commit)
+        # For each bsky post created in the commit, send it in the queue
         for created_post in ops[models.ids.AppBskyFeedPost]["created"]:
             await queue.put(created_post)
 
@@ -361,6 +366,8 @@ async def main(firehose_client: AsyncFirehoseSubscribeReposClient) -> None:
                 await process_data(post)
             finally:
                 queue.task_done()
+
+    # General worker pool stuff
 
     workers = [asyncio.create_task(worker()) for _ in range(6)]
     loop = asyncio.get_running_loop()
