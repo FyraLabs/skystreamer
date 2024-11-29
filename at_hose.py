@@ -196,7 +196,7 @@ async def process_data(post: dict) -> None:
                     "cid": image.image.cid.encode(),
                 }
                 if DOWNLOAD_BLOBS:
-                    image_data["data"] = await download_blob(author, image.image.cid)
+                    image_data["data"] = await download_blob(author, image.image.cid.encode())
                 embed["images"].append(image_data)
 
         if isinstance(record.embed, models.AppBskyEmbedVideo.Main):
@@ -205,7 +205,7 @@ async def process_data(post: dict) -> None:
                 "cid": record.embed.video.cid.encode(),
             }
             if DOWNLOAD_BLOBS:
-                video_data["data"] = await download_blob(author, record.embed.video.cid)
+                video_data["data"] = await download_blob(author, record.embed.video.cid.encode())
             embed["videos"].append(video_data)
 
         if isinstance(record.embed, models.AppBskyEmbedExternal.Main):
@@ -232,7 +232,7 @@ async def process_data(post: dict) -> None:
                         }
                         if DOWNLOAD_BLOBS:
                             image_data["data"] = await download_blob(
-                                author, img.image.cid
+                                author, img.image.cid.encode()
                             )
                         embed["images"].append(image_data)
                 if isinstance(image, models.AppBskyEmbedVideo.Main):
@@ -242,7 +242,7 @@ async def process_data(post: dict) -> None:
                     }
                     if DOWNLOAD_BLOBS:
                         video_data["data"] = await download_blob(
-                            author, image.video.cid
+                            author, image.video.cid.encode()
                         )
                     embed["videos"].append(video_data)
                 if isinstance(image, models.AppBskyEmbedExternal.Main):
