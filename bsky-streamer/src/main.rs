@@ -12,6 +12,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, Web
 use types::{CidOld, CommitHandler, PostData, Subscription};
 use update_rate::RateCounter;
 
+mod db_types;
 mod types;
 
 struct RepoSubscription {
@@ -79,7 +80,9 @@ impl CommitHandler for Firehose {
             let record = self.extract_post_record(op, &commit.blocks).await?;
             // get repo
 
-            let post = PostData::new(commit.repo.clone(), record);
+            let post = PostData::new(commit.repo.clone(), commit.commit.clone(), record);
+
+            let _post = db_types::Post::new(post);
 
             // tracing::info!("Received post: {:#?}", post,);
 
@@ -136,7 +139,7 @@ impl Firehose {
 
         Ok(serde_ipld_dagcbor::from_reader(&mut item.as_slice())?)
     }
-    #[tracing::instrument(skip(self))]
+    // #[tracing::instrument(skip(self))]
     fn update_stats(&mut self) {
         self.rate_counter.update();
         if self.rate_counter.rate_age_cycles() == 0 {
@@ -155,6 +158,7 @@ async fn main() {
         .with_thread_ids(false)
         .with_level(true)
         .with_file(false)
+        .compact()
         .with_line_number(false)
         .with_env_filter("debug")
         .init();

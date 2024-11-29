@@ -4,7 +4,7 @@ use atrium_api::app::bsky::embed::video::MainData as VideoData;
 use atrium_api::app::bsky::feed::post::{Record as PostRecord, RecordEmbedRefs};
 use atrium_api::com::atproto::sync::subscribe_repos::Commit;
 use atrium_api::types::string::Did;
-use atrium_api::types::{BlobRef, TypedBlobRef};
+use atrium_api::types::{BlobRef, CidLink, TypedBlobRef};
 use cid::multihash::Multihash;
 use cid::Cid;
 use color_eyre::Result;
@@ -22,12 +22,17 @@ pub enum Media {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PostData {
     pub author: Did,
+    pub cid: Cid,
     pub record: PostRecord,
 }
 
 impl PostData {
-    pub fn new(author: Did, record: PostRecord) -> Self {
-        Self { author, record }
+    pub fn new(author: Did, cid: CidLink, record: PostRecord) -> Self {
+        Self {
+            author,
+            cid: cid.0,
+            record,
+        }
     }
 
     /// Get media associated with the post

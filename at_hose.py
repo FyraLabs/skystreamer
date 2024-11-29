@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import os
 import signal
 import time
@@ -32,7 +33,7 @@ SURREAL_URI = os.getenv("SURREAL_URI", "ws://localhost:8000")
 SURREAL_USERNAME = os.getenv("SURREAL_USERNAME", "root")
 SURREAL_PASSWORD = os.getenv("SURREAL_PASSWORD", "root")
 SURREAL_NAMESPACE = os.getenv("SURREAL_NAMESPACE", "bsky")
-SURREAL_DATABASE = os.getenv("SURREAL_DATABASE", "bsky")
+SURREAL_DATABASE = os.getenv("SURREAL_DATABASE", "bsky_2")
 
 DOWNLOAD_BLOBS = os.getenv("DOWNLOAD_BLOBS", False)
 
@@ -130,7 +131,7 @@ async def signal_handler(_: int, __: FrameType) -> None:
 
 
 def bsky_post_index(idx: str) -> str:
-    return f"bsky_feed_post:⟨{idx}⟩"
+    return f"post:⟨{idx}⟩"
 
 
 def bsky_user_index(idx: str) -> str:
@@ -141,7 +142,7 @@ def bsky_user_index(idx: str) -> str:
 async def process_data(post: dict) -> None:
     logger.debug(f"Processing post: {post['uri']}")
     author = post["author"]
-    record = post["record"]
+    record: models.AppBskyFeedPost.Record = post["record"]
     post_id = post["uri"].split("/")[-1]
 
     # post_index = f"{author}/{post_id}"
@@ -171,7 +172,7 @@ async def process_data(post: dict) -> None:
     # Check if index already exists
     surreal_post_index = bsky_post_index(post_index)
     # conflict_check = await db.query(
-    #     f"SELECT * FROM bsky_feed_post WHERE id = {surreal_post_index}"
+    #     f"SELECT * FROM post WHERE id = {surreal_post_index}"
     # )
 
     # if conflict_check[0]["result"]:
@@ -230,7 +231,9 @@ async def process_data(post: dict) -> None:
                             "cid": img.image.cid.encode(),
                         }
                         if DOWNLOAD_BLOBS:
-                            image_data["data"] = await download_blob(author, img.image.cid)
+                            image_data["data"] = await download_blob(
+                                author, img.image.cid
+                            )
                         embed["images"].append(image_data)
                 if isinstance(image, models.AppBskyEmbedVideo.Main):
                     video_data = {
@@ -238,7 +241,9 @@ async def process_data(post: dict) -> None:
                         "cid": image.video.cid.encode(),
                     }
                     if DOWNLOAD_BLOBS:
-                        video_data["data"] = await download_blob(author, image.video.cid)
+                        video_data["data"] = await download_blob(
+                            author, image.video.cid
+                        )
                     embed["videos"].append(video_data)
                 if isinstance(image, models.AppBskyEmbedExternal.Main):
                     embed["external"].append(image.external.model_dump())
@@ -251,40 +256,7 @@ async def process_data(post: dict) -> None:
 
     # print(embed)
 
-    # if record.text == "":
-    #     logger.warning(f"Empty post, not adding: {post_index}")
-    #     return
-    while True:
-        try:
-            await db.create(
-                thing="bsky_feed_post",
-                data={
-                    "id": post_index,
-                    "post_id": post_id,
-                    "author": author,
-                    "text": record.text,
-                    "created_at": record.created_at,
-                    "language": record.langs,
-                    "labels": labels,
-                    "reply": reply,
-                    "images": embed["images"],
-                    "videos": embed["videos"],
-                    "quotes": embed["record"],
-                    "external_links": embed["external"],
-                    "tags": record.tags,
-                },
-            )
-            break
-        except Exception as e:
-            if "already exists" in str(e):
-                return
-            elif "Resource busy" in str(e):
-                logger.warning("Resource busy, retrying...")
-                await asyncio.sleep(0.2)
-            else:
-                logger.error(f"Error creating post: {e}")
-                return
-
+    # created_at = datetime.datetime.fromisoformat(record.created_at / 1000)
     # Check if user already exists
     while True:
         try:
@@ -299,6 +271,38 @@ async def process_data(post: dict) -> None:
             else:
                 logger.error(f"Error creating user: {e}")
                 return
+    # if record.text == "":
+    #     logger.warning(f"Empty post, not adding: {post_index}")
+    #     return
+    while True:
+        try:
+            await db.create(
+                thing="post",
+                data={
+                    "id": post_index,
+                    "post_id": post_id,
+                    "author": author,
+                    "text": record.text,
+                    "created_at": record.created_at,
+                    "language": record.langs[0] if record.langs else None,
+                    "labels": labels,
+                    "reply": reply,
+                    "embed": embed,
+                    "tags": record.tags,
+                },
+            )
+            break
+        except Exception as e:
+            if "already exists" in str(e):
+                return
+            elif "Resource busy" in str(e):
+                logger.warning("Resource busy, retrying...")
+                await asyncio.sleep(0.2)
+            else:
+                logger.error(f"Error creating post: {e}")
+                return
+
+
 
     # Tag author
     author_index = bsky_user_index(author)
@@ -324,8 +328,6 @@ async def process_data(post: dict) -> None:
 
     pass
 
-
-#executor = ThreadPoolExecutor(max_workers=6)
 
 async def main(firehose_client: AsyncFirehoseSubscribeReposClient) -> None:
     await db.connect()
@@ -371,6 +373,7 @@ async def main(firehose_client: AsyncFirehoseSubscribeReposClient) -> None:
 
     workers = [asyncio.create_task(worker()) for _ in range(6)]
     loop = asyncio.get_running_loop()
+
     async def shutdown() -> None:
         await client.stop()
         for worker_task in workers:
@@ -388,6 +391,7 @@ async def main(firehose_client: AsyncFirehoseSubscribeReposClient) -> None:
             await worker_task
         except asyncio.CancelledError:
             pass
+
 
 if __name__ == "__main__":
     signal.signal(
