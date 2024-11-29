@@ -4,7 +4,7 @@ use atrium_api::app::bsky::embed::video::MainData as VideoData;
 use atrium_api::app::bsky::feed::post::{Record as PostRecord, RecordEmbedRefs};
 use atrium_api::com::atproto::sync::subscribe_repos::Commit;
 use atrium_api::types::string::Did;
-use atrium_api::types::{BlobRef, CidLink, TypedBlobRef};
+use atrium_api::types::{BlobRef, CidLink, TypedBlobRef, UnTypedBlobRef};
 use cid::multihash::Multihash;
 use cid::Cid;
 use color_eyre::Result;
@@ -13,11 +13,105 @@ use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::io::Cursor;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Media {
-    Image(ImageData),
+    // Image(ImageData),
+    Image(Image),
     // note: weird naming
-    Video(VideoData),
+    // Video(VideoData),
+    Video(Video),
+}
+
+// We have to define our own wrapper types because
+// BlobRef union type are kinda weird
+// todo: Figure out how to fix this
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Video {
+    /// Alt text
+    pub alt: Option<String>,
+    pub blob: Blob,
+    pub aspect_ratio: Option<(u32, u32)>,
+}
+
+impl From<VideoData> for Video {
+    fn from(value: VideoData) -> Self {
+        Self {
+            alt: value.alt,
+            blob: value.video.into(),
+            aspect_ratio: value
+                .aspect_ratio
+                .map(|ar| (ar.width.get() as u32, ar.height.get() as u32)),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Image {
+    pub alt: String,
+    pub blob: Blob,
+    pub aspect_ratio: Option<(u32, u32)>,
+}
+
+impl From<ImageData> for Image {
+    fn from(value: ImageData) -> Self {
+        Self {
+            alt: value.alt,
+            blob: value.image.into(),
+            aspect_ratio: value
+                .aspect_ratio
+                .map(|ar| (ar.width.get() as u32, ar.height.get() as u32)),
+        }
+    }
+}
+// pub struct ExternalData {
+//     pub description: String,
+//     #[serde(skip_serializing_if = "core::option::Option::is_none")]
+//     pub thumb: core::option::Option<crate::types::BlobRef>,
+//     pub title: String,
+//     pub uri: String,
+// }
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ExternalLink {
+    pub description: String,
+    pub thumb: Option<Blob>,
+    pub title: String,
+    pub uri: String,
+}
+
+impl From<atrium_api::app::bsky::embed::external::ExternalData> for ExternalLink {
+    fn from(value: atrium_api::app::bsky::embed::external::ExternalData) -> Self {
+        Self {
+            description: value.description,
+            thumb: value.thumb.map(|b| b.into()),
+            title: value.title,
+            uri: value.uri,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Blob {
+    pub cid: String,
+    pub mime_type: String,
+    pub size: Option<usize>,
+}
+
+impl From<BlobRef> for Blob {
+    fn from(value: BlobRef) -> Self {
+        match value {
+            BlobRef::Typed(TypedBlobRef::Blob(blob)) => Self {
+                cid: blob.r#ref.0.to_string(),
+                mime_type: blob.mime_type,
+                size: Some(blob.size),
+            },
+            BlobRef::Untyped(UnTypedBlobRef { cid, mime_type }) => Self {
+                cid,
+                mime_type,
+                size: None,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -44,11 +138,11 @@ impl PostData {
             atrium_api::types::Union::Refs(RecordEmbedRefs::AppBskyEmbedImagesMain(m)) => Some(
                 m.images
                     .iter()
-                    .map(|i| Media::Image(i.data.clone()))
+                    .map(|i| Media::Image(i.data.clone().into()))
                     .collect(),
             ),
             atrium_api::types::Union::Refs(RecordEmbedRefs::AppBskyEmbedVideoMain(m)) => {
-                Some(vec![Media::Video(m.data.clone())])
+                Some(vec![Media::Video(m.data.clone().into())])
             }
             atrium_api::types::Union::Refs(RecordEmbedRefs::AppBskyEmbedRecordWithMediaMain(m)) => {
                 match &m.media {
@@ -56,12 +150,12 @@ impl PostData {
                         Some(
                             m.images
                                 .iter()
-                                .map(|i| Media::Image(i.data.clone()))
+                                .map(|i| Media::Image(i.data.clone().into()))
                                 .collect(),
                         )
                     }
                     atrium_api::types::Union::Refs(MainMediaRefs::AppBskyEmbedVideoMain(m)) => {
-                        Some(vec![Media::Video(m.data.clone())])
+                        Some(vec![Media::Video(m.data.clone().into())])
                     }
                     _ => None,
                 }
@@ -82,27 +176,23 @@ where
     C: atrium_api::xrpc::XrpcClient + Send + Sync,
 {
     let blob_ref = match media {
-        Media::Image(data) => &data.image,
-        Media::Video(data) => &data.video,
+        Media::Image(data) => &data.blob,
+        Media::Video(data) => &data.blob,
     };
 
-    if let BlobRef::Typed(TypedBlobRef::Blob(blob)) = blob_ref {
-        let bytes = client
-            .com
-            .atproto
-            .sync
-            .get_blob(
-                atrium_api::com::atproto::sync::get_blob::ParametersData {
-                    cid: atrium_api::types::string::Cid::new(blob.r#ref.0),
-                    did: did.clone(),
-                }
-                .into(),
-            )
-            .await?;
-        Ok(bytes)
-    } else {
-        Err(color_eyre::eyre::eyre!("Invalid blob reference"))
-    }
+    let bytes = client
+        .com
+        .atproto
+        .sync
+        .get_blob(
+            atrium_api::com::atproto::sync::get_blob::ParametersData {
+                cid: atrium_api::types::string::Cid::new(blob_ref.cid.clone().parse().unwrap()),
+                did: did.clone(),
+            }
+            .into(),
+        )
+        .await?;
+    Ok(bytes)
 }
 // original definition:
 //```

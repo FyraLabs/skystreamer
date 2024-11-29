@@ -106,7 +106,7 @@ impl CommitHandler for FirehoseConsumer {
 
             tracing::trace!(?post, "Received post");
 
-            self.exporter.export(post).await?;
+            self.exporter.export(&post).await?;
 
             // let jsonl = serde_json::to_string(&post)?;
 
