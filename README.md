@@ -1,19 +1,38 @@
-# Cappy's Bluesky data analytics workspace
+# SkyStreamer
 
-This is my personal workspace for scraping data from the AT (Bluesky) protocol and analyzing them.
+SkyStreamer is an AT firehose consumer that streams new posts from Bluesky. It does the filtering for you so you can focus on the posts.
 
-Some people might be against the very idea of me doing this, but I don't really care about you. I'm just curious and I want to show you guys
-that big data is cool. Ethics is kinda boring anyway.
+## Why?
 
-## What is Bluesky?
+The AT protocol firehose can be a very useful source of data, one may want to consume it in a more structured way.
+SkyStreamer helps filter out the noise and only stream new Bluesky posts from the firehose.
 
-Bluesky is a social media platform based on the AT protocol. It's meant to be a decentralized social media platform but it's not really decentralized
-since most people just use bsky.social to access it, and barely anyone could not be bothered to run their own node. But it's still cool.
+## Planned Features
 
-They also *really* hate the fact that someone's been scraping a million posts from their platform. I say try me next.
+- [ ] Make data types non-dependent on SurrealDB while maintaining data types
+- [ ] Export a crate for easy integration with other projects
+- [ ] SSL-independent implementation (Rustls/OpenSSL agnostic)
+- [ ] Optimized, multiple-threaded implementation
+- [ ] Configuration
 
-## Components
+## Ethics
 
-- `at_hose.py`: The main script that streams data from the AT network, and saves them into a SurrealDB database.
+SkyStreamer collects large amounts of new data streaming from Bluesky itself, which then can be used for many various purposes.
 
-Other components will be added as I go along.
+While the network and the data itself is **visibly public** to **everyone**, Some users may be uncomfortable with their data being collected and used in this way, especially for machine learning or similar purposes.
+
+> [!IMPORTANT]
+> SkyStreamer is *not* designed to filter or redact any specific users' data out, and will attempt to store everything it can read from the firehose.
+> So please be mindful of the data you are collecting and how you are using it, and respect their consent if possible.
+>
+> You may want to manually filter or redact using a script or another tool before publishing or sharing the data.
+
+## Usage
+
+By default, SkyStreamer will stream its data into a SurrealDB database. You may change this using environment variables or CLI arguments.
+
+You may also stream the data into a CSV file, or a newline-delimited JSON file (JSONL).
+
+## Older implementation
+
+SkyStreamer was originally implemented as a simple Python script. You can find the old implementation in the `legacy` directory.

@@ -24,8 +24,8 @@ use atrium_api::{
     xrpc::{http::request, XrpcClient},
 };
 use atrium_xrpc_client::reqwest::ReqwestClient;
+use chrono::NaiveDateTime;
 use color_eyre::{eyre::OptionExt, Result};
-use ipld_core::ipld::Ipld;
 use std::sync::OnceLock;
 use surrealdb::{Connection, Surreal};
 use tokio::io::AsyncWriteExt;
@@ -58,48 +58,50 @@ impl XrpcQuerier {
         QUERIER.get_or_init(XrpcQuerier::new)
     }
 
-    pub async fn get_profile(&self, did: Did) -> Result<ProfileViewDetailed> {
+    pub async fn get_profile(&self, did: Did) -> Result<User> {
         let permit = self.semaphore.acquire().await?;
 
         let did_str = did.to_string();
+        let now = chrono::Utc::now().naive_utc();
 
-        // Check if profile is in cache first
+        // Check if profile is in cache first and not expired
         let cache = PROFILE_CACHE.with(|pc| pc.cache.clone());
-        let cache = cache.read().await;
-        if let Some(profile) = cache.get(&did.to_string()) {
-            tracing::info!(?profile, "Profile cache hit!");
-            return Ok(profile.clone());
-        }
-        drop(cache); // Release the read lock
+        let mut cache = cache.write().await;
 
-        let actor = self
+        if let Some((cached_time, profile)) = cache.get(&did_str).map(|(t, p)| (*t, p.clone())) {
+            // 4 hour expiration time
+            if now.signed_duration_since(cached_time).num_hours() < 4 {
+                tracing::trace!(?profile, "Profile cache hit!");
+                drop(permit);
+                return Ok(profile);
+            }
+            // Remove expired entry
+            cache.remove(&did_str);
+        }
+        drop(cache);
+
+        let actor: User = self
             .http_client
             .get("https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile")
-            .query(&[("actor", did_str)])
+            .query(&[("actor", did_str.clone())])
             .send()
             .await?
             .json::<ProfileViewDetailedData>()
-            .await?;
-
-        // tracing::info!(?actor, "Got actor profile");
+            .await?
+            .into();
 
         let cache = PROFILE_CACHE.with(|pc| pc.cache.clone());
         let mut cache = cache.write().await;
-        let did_str = did.to_string();
-        cache.insert(did_str, actor.clone().into());
+        cache.insert(did_str, (now, actor.clone()));
 
-        drop(permit); // Release the permit
+        drop(permit);
 
-        Ok(actor.into())
+        Ok(actor)
     }
 }
 
 pub struct ProfileCache {
-    pub cache: Arc<
-        tokio::sync::RwLock<
-            std::collections::HashMap<String, app::bsky::actor::defs::ProfileViewDetailed>,
-        >,
-    >,
+    pub cache: Arc<tokio::sync::RwLock<std::collections::HashMap<String, (NaiveDateTime, User)>>>,
 }
 
 impl ProfileCache {
@@ -144,11 +146,7 @@ async fn create_relations<C: Connection>(db: &Surreal<C>, post: &Post) -> Result
 
             let _: Option<User> = db
                 .upsert((USERS_TABLE, &post_author))
-                .content(crate::db_types::User {
-                    id: None,
-                    avatar: actor.avatar.clone(),
-                    handle: actor.handle.clone().into(),
-                })
+                .content(actor)
                 .await?;
             Ok::<_, color_eyre::Report>(())
         }

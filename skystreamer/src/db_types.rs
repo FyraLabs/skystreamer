@@ -1,7 +1,8 @@
 use crate::types::{Blob, ExternalLink, Media, PostData};
-use atrium_api::types::string::Did;
+use atrium_api::{app::bsky::actor::defs::{ProfileViewDetailed, ProfileViewDetailedData}, client::com::atproto::label, types::string::Did};
 use serde::{Deserialize, Serialize};
 use surrealdb::sql::Thing;
+use url::Url;
 
 // example post:
 
@@ -50,14 +51,81 @@ pub struct Embed {
     pub quote: Option<String>,
 }
 
-// A Bluesky user profile,
+fn parse_bsky_img_url(url: Url) -> Blob {
+    // https://cdn.bsky.app/img/avatar/plain/did:plc:mmb3snayvehyjxlngslg4bci/bafkreigaitwqbx65ol4b4phtorimubooiub4z57arjk5vvklczoztn5q6i@jpeg"
+
+    // split until the last 2 parts
+
+    let mut parts = url.path().split('/').collect::<Vec<&str>>();
+
+    let cid_blob = parts.pop().unwrap();
+    let _did = parts.pop().unwrap();
+
+    // we should be able to just prepend the `did:plc:` prefix to the DID
+    
+    let (cid, ext) = cid_blob.split_once('@').unwrap();
+
+    Blob {
+        size: None,
+        cid: cid.to_string(),
+        mime_type: format!("image/{}", ext),
+    }
+
+}
+
+// A Bluesky user profile, A minimized version of ProfileViewBasic
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct User {
     /// DID of the user
+    #[serde(skip)]
+    pub did: Option<Did>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<Thing>,
-    pub avatar: Option<String>,
+    
+    /// Display name of user
+    pub display_name: Option<String>,
+    /// Handle/Domain name of user
     pub handle: String,
+    /// Avatar of user
+    pub avatar: Option<Blob>,
+    /// Labels associated with user
+    pub labels: Vec<String>,
+    /// Date and time of user creation
+    pub created_at: Option<surrealdb::sql::Datetime>,
+    /// Date and time of user last indexed
+    pub indexed_at: Option<surrealdb::sql::Datetime>,
+    /// Banner image of user
+    pub banner: Option<Blob>,
+    /// Bio/description of user
+    pub description: Option<String>,
+    /// Number of followers of this user has
+    pub followers: Option<usize>,
+    /// Number of users this user follows
+    pub following: Option<usize>,
+    /// Number of total posts created by this user
+    pub posts: Option<usize>,
 }
+
+impl From<ProfileViewDetailedData> for User {
+    fn from(profile: ProfileViewDetailedData) -> Self {
+        User {
+            did: Some(profile.did.clone()),
+            id: None,
+            display_name: profile.display_name.clone(),
+            handle: profile.handle.to_string(),
+            avatar: profile.avatar.as_ref().map(|url| parse_bsky_img_url(Url::parse(url).unwrap())),
+            labels: profile.labels.as_ref().map(|labels| labels.iter().map(|label| label.val.as_str().to_string()).collect()).unwrap_or_default(),
+            created_at: profile.created_at.clone().map(|date| date.as_str().parse().unwrap()),
+            indexed_at: profile.indexed_at.clone().map(|date| date.as_str().parse().unwrap()),
+            banner: profile.banner.as_ref().map(|url| parse_bsky_img_url(Url::parse(url).unwrap())),
+            description: profile.description.clone(),
+            followers: profile.followers_count.map(|count| count as usize),
+            following: profile.follows_count.map(|count| count as usize),
+            posts: profile.posts_count.map(|count| count as usize),
+        }
+    }
+}
+
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Post {
@@ -165,5 +233,26 @@ impl Post {
             }),
         }
         // todo!()
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    pub use super::*;
+    const CAPPY_PFP_URL: &str = "https://cdn.bsky.app/img/avatar/plain/did:plc:x4pssacf24wuotdl65zntnsr/bafkreihsq6kzrgb2jzyg3jowj4bfw5hwoh2dx7zagcplh5ooe2b5cdgche@jpeg";
+    // const CAPPY_DID: &str = "did:plc:x4pssacf24wuotdl65zntnsr";
+
+    const PUNIRU_CID: &str = "bafkreihsq6kzrgb2jzyg3jowj4bfw5hwoh2dx7zagcplh5ooe2b5cdgche";
+
+
+    #[test]
+    fn test_parse_bsky_img_url() {
+        let url = Url::parse(CAPPY_PFP_URL).unwrap();
+        let blob = parse_bsky_img_url(url);
+
+        println!("{:#?}", blob);
+        assert_eq!(blob.cid, PUNIRU_CID);
+        assert_eq!(blob.mime_type, "image/jpeg");
     }
 }

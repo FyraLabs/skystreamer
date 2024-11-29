@@ -575,36 +575,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bsky-streamer"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "atrium-api",
- "atrium-xrpc-client",
- "chrono",
- "cid 0.10.1",
- "cid 0.11.1",
- "color-eyre",
- "csv",
- "futures",
- "ipld-core",
- "reqwest 0.11.27",
- "rs-car",
- "serde",
- "serde_ipld_dagcbor",
- "serde_json",
- "surrealdb",
- "tokio",
- "tokio-stream",
- "tokio-tungstenite 0.24.0",
- "tracing",
- "tracing-subscriber",
- "trait-variant",
- "update_rate",
- "url",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3884,6 +3854,36 @@ name = "siphasher"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38b58827f4464d87d377d175e90bf58eb00fd8716ff0a62f80356b5e61555d0d"
+
+[[package]]
+name = "skystreamer"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "atrium-api",
+ "atrium-xrpc-client",
+ "chrono",
+ "cid 0.10.1",
+ "cid 0.11.1",
+ "color-eyre",
+ "csv",
+ "futures",
+ "ipld-core",
+ "reqwest 0.11.27",
+ "rs-car",
+ "serde",
+ "serde_ipld_dagcbor",
+ "serde_json",
+ "surrealdb",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite 0.24.0",
+ "tracing",
+ "tracing-subscriber",
+ "trait-variant",
+ "update_rate",
+ "url",
+]
 
 [[package]]
 name = "slab"
