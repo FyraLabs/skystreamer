@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 # envars
 
-SURREAL_URI = os.getenv("SURREAL_URI", "ws://localhost:8808")
+SURREAL_URI = os.getenv("SURREAL_URI", "ws://localhost:8000")
 
 SURREAL_USERNAME = os.getenv("SURREAL_USERNAME", "root")
 SURREAL_PASSWORD = os.getenv("SURREAL_PASSWORD", "root")

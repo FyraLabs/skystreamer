@@ -1,5 +1,8 @@
-/db
+/db*
 
 **/target/
 
 *.jsonl
+
+history.txt
+*.zst
