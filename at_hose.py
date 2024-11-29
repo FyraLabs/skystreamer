@@ -332,7 +332,7 @@ async def process_data(post: dict) -> None:
 async def main(firehose_client: AsyncFirehoseSubscribeReposClient) -> None:
     await db.connect()
     await db.use(namespace=SURREAL_NAMESPACE, database=SURREAL_DATABASE)
-    await db.sign_in(password=SURREAL_PASSWORD, username=SURREAL_USERNAME)
+    # await db.sign_in(password=SURREAL_PASSWORD, username=SURREAL_USERNAME)
 
     queue = asyncio.Queue()
 

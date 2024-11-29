@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::io::Cursor;
 
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Media {
     Image(ImageData),
     // note: weird naming
@@ -46,6 +47,9 @@ impl PostData {
                     .map(|i| Media::Image(i.data.clone()))
                     .collect(),
             ),
+            atrium_api::types::Union::Refs(RecordEmbedRefs::AppBskyEmbedVideoMain(m)) => {
+                Some(vec![Media::Video(m.data.clone())])
+            }
             atrium_api::types::Union::Refs(RecordEmbedRefs::AppBskyEmbedRecordWithMediaMain(m)) => {
                 match &m.media {
                     atrium_api::types::Union::Refs(MainMediaRefs::AppBskyEmbedImagesMain(m)) => {
@@ -164,6 +168,7 @@ pub trait Subscription {
 
 pub trait CommitHandler {
     fn handle_commit(&mut self, commit: &Commit) -> impl Future<Output = Result<()>>;
+    fn update_cursor(&self, seq: u64) -> impl Future<Output = Result<()>>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

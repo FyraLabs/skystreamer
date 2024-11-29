@@ -1,6 +1,9 @@
-use crate::types::PostData;
+use crate::types::{Media, PostData};
+use atrium_api::app::bsky::embed::external::ExternalData;
 use chrono::DateTime;
 use serde::{Deserialize, Serialize};
+
+use surrealdb::Surreal;
 
 // example post:
 
@@ -39,6 +42,15 @@ pub struct ReplyRef {
     /// Root of reply
     pub root: String,
 }
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Embed {
+    /// External links associated with post
+    pub external_links: Option<ExternalData>,
+    /// Media associated with post
+    pub media: Vec<Media>,
+    /// Link to another Post quoted by the current post
+    pub quote: Option<String>,
+}
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Post {
@@ -63,6 +75,7 @@ pub struct Post {
     pub tags: Vec<String>,
     /// Labels associated with post
     pub labels: Vec<String>,
+    pub embed: Option<Embed>,
 }
 
 impl Post {
@@ -92,11 +105,38 @@ impl Post {
                         atrium_api::app::bsky::feed::post::RecordLabelsRefs::ComAtprotoLabelDefsSelfLabels(
                             values,
                         ),
-                        
-                    ) => values.data.values.clone().into_iter().map(|label| label.val.clone()).collect(),
+                    ) => values.data.values.iter().map(|label| label.val.as_str().to_string()).collect(),
                     _ => Vec::new(),
                 }),
-            tags: data.record.tags.clone().unwrap_or_default()
+            tags: data.record.tags.as_ref().map_or_else(Vec::new, |tags| tags.iter().map(|tag| tag.to_string()).collect()),
+            embed: data.record.embed.as_ref().map(|embed| {
+                // let mut media: Vec<Media> = Vec::new();
+                let embedded_media = data.get_media();
+                let external_links = match &embed {
+                    atrium_api::types::Union::Refs(
+                        atrium_api::app::bsky::feed::post::RecordEmbedRefs::AppBskyEmbedExternalMain(
+                            external,
+                        ),
+                    ) => Some(external.data.clone().external.data),
+                    _ => None,
+                };
+
+                let quote = match &embed {
+                    atrium_api::types::Union::Refs(
+                        atrium_api::app::bsky::feed::post::RecordEmbedRefs::AppBskyEmbedRecordWithMediaMain(embed_data)
+                    ) => Some(&embed_data.record.data.record.cid),
+                    atrium_api::types::Union::Refs(
+                        atrium_api::app::bsky::feed::post::RecordEmbedRefs::AppBskyEmbedRecordMain(embed_data)
+                    ) => Some(&embed_data.data.record.cid),
+                    _ => None,
+                };
+
+                Embed {
+                    external_links,
+                    media: embedded_media.unwrap_or_default(),
+                    quote: quote.map(|quote| quote.as_ref().to_string()),
+                }
+            }),
         }
         // todo!()
     }

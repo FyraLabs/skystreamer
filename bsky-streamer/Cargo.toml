@@ -4,11 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-trait = "0.1.83"
 atrium-api = { version = "0.24.8", features = ["tokio"] }
 chrono = { version = "0.4.38", features = ["serde"] }
 cid = "0.11.1"
 cid_old = { package = "cid", version = "0.10.1" }
 color-eyre = "0.6.3"
+csv = "1.3.1"
 futures = "0.3.31"
 ipld-core = "0.4.1"
 rs-car = "0.4.1"
@@ -17,6 +19,7 @@ serde_ipld_dagcbor = "0.6.1"
 serde_json = "1.0.133"
 surrealdb = "2.1.2"
 tokio = { version = "1.41.1", features = ["full"] }
+tokio-stream = { version = "0.1.16", features = ["full"] }
 tokio-tungstenite = { version = "0.24.0", features = ["native-tls", "url"] }
 tracing = { version = "0.1.41", features = ["async-await", "log"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
