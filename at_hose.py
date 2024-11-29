@@ -266,8 +266,8 @@ async def process_data(post: dict) -> None:
             if "already exists" in str(e):
                 return
             elif "Resource busy" in str(e):
-                logger.warning("Resource busy, retrying...")
-                await asyncio.sleep(0.2)
+                # logger.warning("Resource busy, retrying...")
+                await asyncio.sleep(0.1)
             else:
                 logger.error(f"Error creating user: {e}")
                 return
@@ -296,8 +296,8 @@ async def process_data(post: dict) -> None:
             if "already exists" in str(e):
                 return
             elif "Resource busy" in str(e):
-                logger.warning("Resource busy, retrying...")
-                await asyncio.sleep(0.2)
+                # logger.warning("Resource busy, retrying...")
+                await asyncio.sleep(0.1)
             else:
                 logger.error(f"Error creating post: {e}")
                 return
