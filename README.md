@@ -9,11 +9,11 @@ SkyStreamer helps filter out the noise and only stream new Bluesky posts from th
 
 ## Planned Features
 
-- [ ] Make data types non-dependent on SurrealDB while maintaining data types
-- [ ] Export a crate for easy integration with other projects
+- [x] Make data types non-dependent on SurrealDB while maintaining data types
+- [x] Export a crate for easy integration with other projects
 - [ ] SSL-independent implementation (Rustls/OpenSSL agnostic)
 - [ ] Optimized, multiple-threaded implementation
-- [ ] Configuration
+- [x] Configuration
 
 ## Ethics
 
