@@ -3,6 +3,7 @@
 **/target/
 
 *.jsonl
+*.csv
 
 history.txt
 *.zst

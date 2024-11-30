@@ -113,8 +113,151 @@ impl From<BlobRef> for Blob {
         }
     }
 }
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ReplyRef {
+    pub parent: Cid,
+    pub root: Cid,
+}
 
-#[derive(Debug, Serialize, Deserialize)]
+impl From<atrium_api::app::bsky::feed::post::ReplyRef> for ReplyRef {
+    fn from(value: atrium_api::app::bsky::feed::post::ReplyRef) -> Self {
+        Self {
+            parent: value.parent.data.cid.as_ref().to_owned(),
+            root: value.root.data.cid.as_ref().to_owned(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum Embed {
+    Images(Vec<Image>),
+    External(ExternalLink),
+    Record(Cid),
+    RecordWithMedia(Cid, Box<Vec<Media>>),
+    Unknown,
+}
+
+impl From<RecordEmbedRefs> for Embed {
+    fn from(value: RecordEmbedRefs) -> Self {
+        match value {
+            RecordEmbedRefs::AppBskyEmbedImagesMain(m) => Embed::Images(
+                m.images
+                    .clone()
+                    .into_iter()
+                    .map(|i| i.data.into())
+                    .collect(),
+            ),
+            RecordEmbedRefs::AppBskyEmbedExternalMain(m) => {
+                Embed::External(m.data.external.data.into())
+            }
+            RecordEmbedRefs::AppBskyEmbedRecordMain(m) => {
+                Embed::Record(m.record.data.cid.as_ref().to_owned())
+            }
+            RecordEmbedRefs::AppBskyEmbedRecordWithMediaMain(m) => {
+                let media = match &m.media {
+                    atrium_api::types::Union::Refs(MainMediaRefs::AppBskyEmbedImagesMain(m)) => m
+                        .images
+                        .clone()
+                        .into_iter()
+                        .map(|i| Media::Image(i.data.into()))
+                        .collect::<Vec<Media>>(),
+                    atrium_api::types::Union::Refs(MainMediaRefs::AppBskyEmbedVideoMain(m)) => {
+                        vec![Media::Video(m.data.clone().into())]
+                    }
+                    _ => return Embed::Unknown,
+                };
+                // let media = match m.media {
+                //     atrium_api::types::Union::Refs(MainMediaRefs::AppBskyEmbedImagesMain(m)) => {
+                //         // Media::Image(
+                //             m.images
+                //                 .into_iter()
+                //                 .map(|i| i.data.into())
+                //                 .collect::<Vec<Image>>(),
+                //         // )
+                //     }
+                //     MainMediaRefs::AppBskyEmbedVideoMain(m) => Media::Video(m.data.into()),
+                //     _ => return Embed::Unknown,
+                // };
+                Embed::RecordWithMedia(
+                    m.record.data.record.cid.as_ref().to_owned(),
+                    Box::new(media),
+                )
+            }
+            _ => Embed::Unknown,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Post {
+    pub author: Did,
+    pub created_at: chrono::DateTime<chrono::FixedOffset>,
+    pub text: String,
+    pub id: Cid,
+    // pub cid: String,
+    pub language: Vec<String>,
+    pub reply: Option<ReplyRef>,
+    pub tags: Vec<String>,
+    pub labels: Vec<String>,
+    pub embed: Option<Embed>,
+}
+
+impl From<PostData> for Post {
+    fn from(value: PostData) -> Self {
+        let record = value.record.data;
+        Self {
+            author: value.author,
+            // because for some reason we can't access the inner chrono::DateTime
+            // we will have to reparse it from string
+            created_at: record.created_at.as_str().parse().unwrap(),
+            text: record.text,
+            id: value.cid,
+            language: record
+                .langs
+                .as_ref()
+                .map(|langs| langs.iter().map(|lang| lang.as_ref().to_string()).collect())
+                .unwrap_or_default(),
+            reply: record.reply.as_ref().map(|reply| (*reply).clone().into()),
+            tags: record.tags.unwrap_or_default().iter().map(|tag| tag.to_string()).collect(),
+            labels: record.labels.as_ref().map_or_else(Vec::new, |labels| {
+                match labels {
+                    atrium_api::types::Union::Refs(
+                        atrium_api::app::bsky::feed::post::RecordLabelsRefs::ComAtprotoLabelDefsSelfLabels(
+                            values,
+                        ),
+                    ) => values.data.values.iter().map(|label| label.val.as_str().to_string()).collect(),
+                    _ => Vec::new(),
+                }
+            }),
+            embed: record.embed.as_ref().map(|embed| match embed {
+                atrium_api::types::Union::Refs(refs) => refs.clone().into(),
+                _ => Embed::Unknown,
+            }),
+        }
+    }
+}
+
+// impl From<atrium_api::com::atproto::repo::strong_ref::MainData> for Post {
+//     fn from(value: atrium_api::com::atproto::repo::strong_ref::MainData) -> Self {
+//         Self {
+//             author: value.author,
+//             created_at: value.created_at,
+//             text: value.text,
+//             id: value.id,
+//             cid: value.cid,
+//             language: value.language,
+//             reply: value.reply.map(|r| ReplyRef {
+//                 parent: r.parent,
+//                 root: r.root,
+//             }),
+//             tags: value.tags,
+//             labels: value.labels,
+//             embed: value.embed.map(|e| e.into()),
+//         }
+//     }
+// }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PostData {
     pub author: Did,
     pub cid: Cid,

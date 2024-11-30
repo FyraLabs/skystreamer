@@ -1,7 +1,7 @@
-use crate::types::{Blob, ExternalLink, Media, PostData};
-use atrium_api::{app::bsky::actor::defs::{ProfileViewDetailed, ProfileViewDetailedData}, client::com::atproto::label, types::string::Did};
+use crate::{exporter::{POSTS_TABLE, USERS_TABLE}, types::{Blob, ExternalLink, Media, PostData}};
+use atrium_api::{app::bsky::actor::defs::ProfileViewDetailedData, types::string::Did};
 use serde::{Deserialize, Serialize};
-use surrealdb::sql::Thing;
+use surrealdb::{sql::Thing, RecordId};
 use url::Url;
 
 // example post:
@@ -37,9 +37,9 @@ use url::Url;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ReplyRef {
     /// Parent CID of the post
-    pub reply_parent: String,
+    pub reply_parent: RecordId,
     /// Root of reply
-    pub reply_root: String,
+    pub reply_root: RecordId,
 }
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct Embed {
@@ -48,7 +48,7 @@ pub struct Embed {
     /// Media associated with post
     pub media: Option<Vec<Media>>,
     /// Link to another Post quoted by the current post
-    pub quote: Option<String>,
+    pub quote: Option<RecordId>,
 }
 
 fn parse_bsky_img_url(url: Url) -> Blob {
@@ -135,7 +135,7 @@ pub struct Post {
     ///
     /// The `did:plc:` prefix is stripped from the DID for brevity.
     /// To get the full DID using ATProto, you can prepend it back.
-    pub author: String,
+    pub author: surrealdb::value::RecordId,
 
     #[serde(skip)]
     pub author_did: Option<Did>,
@@ -150,13 +150,10 @@ pub struct Post {
 
     #[serde(skip)]
     pub cid: String,
-    /// Language of post
+    /// Language(s) of post
     ///
-    /// While this is defined as an array, it usually contains only one element
-    /// so we can safely assume it's a single string
-    pub language: String,
+    pub language: Vec<String>,
     /// Reference to reply
-    #[serde(flatten)]
     pub reply: Option<ReplyRef>,
     /// Tags associated with post
     pub tags: Vec<String>,
@@ -169,21 +166,22 @@ impl Post {
     #[tracing::instrument]
     pub fn new(data: PostData) -> Self {
         Post {
-            author: data.author.to_string().trim_start_matches("did:plc:").to_string(),
+            // author: data.author.to_string().trim_start_matches("did:plc:").to_string(),
+            author: RecordId::from_table_key(USERS_TABLE, data.author.to_string().trim_start_matches("did:plc:").to_string()),
             author_did: Some(data.author.clone()), 
-            id: None,
+            id: data.cid.to_string().parse().ok(),
             cid: data.cid.to_string(),
             created_at: data.record.created_at.as_str().parse().unwrap(),
             language: data
                 .record
                 .langs
                 .as_ref()
-                .and_then(|langs| langs.first().map(|lang| lang.as_ref().to_string()))
+                .map(|langs| langs.iter().map(|lang| lang.as_ref().to_string()).collect())
                 .unwrap_or_default(),
             text: data.record.text.clone(),
             reply: data.record.reply.as_ref().map(|reply| ReplyRef {
-                reply_parent: reply.parent.cid.as_ref().to_string(),
-                reply_root: reply.root.cid.as_ref().to_string(),
+                reply_parent: RecordId::from_table_key(POSTS_TABLE, reply.parent.cid.as_ref().to_string()),
+                reply_root: RecordId::from_table_key(POSTS_TABLE, reply.root.cid.as_ref().to_string()),
             }),
             labels: data
                 .record
@@ -228,7 +226,7 @@ impl Post {
                             .collect()
                     }),
                     media: Some(embedded_media.unwrap_or_default()),
-                    quote: quote.map(|quote| quote.as_ref().to_string()),
+                    quote: quote.map(|quote| RecordId::from_table_key(POSTS_TABLE, quote.as_ref().to_string())),
                 }
             }),
         }

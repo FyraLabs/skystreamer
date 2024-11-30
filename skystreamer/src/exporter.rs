@@ -7,27 +7,23 @@
 pub const POSTS_TABLE: &str = "post";
 pub const USERS_TABLE: &str = "user";
 
-use std::sync::Arc;
+use std::{pin::Pin, sync::Arc};
 
-use crate::db_types::{Post, User};
+use crate::{
+    db_types::{Post as DbPost, User},
+    types::Post,
+};
 use atrium_api::{
-    agent::{
-        store::{MemorySessionStore, SessionStore},
-        AtpAgent,
-    },
-    app::{
-        self,
-        bsky::actor::defs::{ProfileViewDetailed, ProfileViewDetailedData},
-    },
-    com,
-    types::string::{AtIdentifier, Did},
-    xrpc::{http::request, XrpcClient},
+    agent::{store::MemorySessionStore, AtpAgent},
+    app::bsky::actor::defs::ProfileViewDetailedData,
+    types::{string::Did, Collection as _},
 };
 use atrium_xrpc_client::reqwest::ReqwestClient;
 use chrono::NaiveDateTime;
 use color_eyre::{eyre::OptionExt, Result};
+use futures::StreamExt;
 use std::sync::OnceLock;
-use surrealdb::{Connection, Surreal};
+use surrealdb::{Connection, RecordId, Surreal};
 use tokio::io::AsyncWriteExt;
 
 pub struct XrpcQuerier {
@@ -104,11 +100,17 @@ pub struct ProfileCache {
     pub cache: Arc<tokio::sync::RwLock<std::collections::HashMap<String, (NaiveDateTime, User)>>>,
 }
 
-impl ProfileCache {
-    pub fn new() -> Self {
+impl Default for ProfileCache {
+    fn default() -> Self {
         ProfileCache {
             cache: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         }
+    }
+}
+
+impl ProfileCache {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 static QUERIER: OnceLock<XrpcQuerier> = OnceLock::new();
@@ -119,25 +121,27 @@ thread_local! {
 
 #[async_trait::async_trait]
 pub trait Exporter {
-    async fn export(&mut self, post: &Post) -> Result<()>;
+    async fn export(&mut self, post: &DbPost) -> Result<()>;
 }
 
 pub struct SurrealDbExporter<C: Connection> {
-    db: Surreal<C>,
+    db: Box<Surreal<C>>,
 }
 
 impl<C: Connection> SurrealDbExporter<C> {
     pub fn new(db: Surreal<C>) -> Self {
-        SurrealDbExporter { db }
+        SurrealDbExporter { db: Box::new(db) }
     }
 }
 
-async fn create_relations<C: Connection>(db: &Surreal<C>, post: &Post) -> Result<()> {
+async fn create_relations<C: Connection>(db: &Surreal<C>, post: &DbPost) -> Result<()> {
     // Spawn a background task to fetch and store the user profile
     let db = db.clone();
     let post_author = post.author.clone();
     let post_did = post.author_did.clone();
+    let post_cid = post.cid.clone();
     tokio::spawn(async move {
+        // let post_cid = post.cid.clone();
         // let permit = PROFILE_SEMAPHORE.with(|s| s.acquire()).await.unwrap();
         if let Err(e) = async {
             let actor = XrpcQuerier::get()
@@ -145,8 +149,16 @@ async fn create_relations<C: Connection>(db: &Surreal<C>, post: &Post) -> Result
                 .await?;
 
             let _: Option<User> = db
-                .upsert((USERS_TABLE, &post_author))
+                .upsert((USERS_TABLE, post_author.key().to_owned()))
                 .content(actor)
+                .await?;
+
+            let _ = db
+                .query("BEGIN")
+                .query("RELATE $user->author->$post")
+                .bind(("user", post_author))
+                .bind(("post", RecordId::from_table_key(POSTS_TABLE, post_cid)))
+                .query("COMMIT")
                 .await?;
             Ok::<_, color_eyre::Report>(())
         }
@@ -161,9 +173,9 @@ async fn create_relations<C: Connection>(db: &Surreal<C>, post: &Post) -> Result
 
 #[async_trait::async_trait]
 impl<C: Connection> Exporter for SurrealDbExporter<C> {
-    async fn export(&mut self, post: &Post) -> Result<()> {
+    async fn export(&mut self, post: &DbPost) -> Result<()> {
         // tracing::info!("Exporting post: {:?}", post);
-        let res: Result<Option<Post>> = self
+        let res: Result<Option<DbPost>> = self
             .db
             .upsert((POSTS_TABLE, &post.cid))
             .content({
@@ -171,6 +183,8 @@ impl<C: Connection> Exporter for SurrealDbExporter<C> {
                 // let mut post_clone = post.clone();
                 // post_clone.cid = None;
                 // post_clone
+
+                // post_clone.author = format!("r'user:{}'", &post.author);
 
                 post.clone()
             })
@@ -211,7 +225,7 @@ impl<W: tokio::io::AsyncWrite + Unpin> JsonlExporter<W> {
 
 #[async_trait::async_trait]
 impl<W: tokio::io::AsyncWrite + Unpin + Send> Exporter for JsonlExporter<W> {
-    async fn export(&mut self, post: &Post) -> Result<()> {
+    async fn export(&mut self, post: &DbPost) -> Result<()> {
         let json = serde_json::to_string(&post)?;
         self.writer
             .write_all(format!("{}\n", json).as_bytes())
@@ -230,44 +244,110 @@ impl<W: tokio::io::AsyncWrite + Unpin> CsvExporter<W> {
     }
 }
 
+fn csv_escape(s: &str) -> String {
+    format!(
+        "\"{}\"",
+        s.replace('"', "\"\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r")
+            .replace('\t', "\\t")
+            .replace(',', "\\,")
+    )
+}
+
 #[async_trait::async_trait]
 impl<W: tokio::io::AsyncWrite + Unpin + Send> Exporter for CsvExporter<W> {
-    async fn export(&mut self, post: &Post) -> Result<()> {
-        let mut csv = csv::StringRecord::new();
-        csv.push_field(post.cid.as_str());
-        csv.push_field(post.author.as_str());
-        csv.push_field(post.created_at.to_string().as_str());
-        csv.push_field(post.language.as_str());
-        csv.push_field(post.text.as_str());
-        csv.push_field(
-            post.reply
-                .as_ref()
-                .map_or("", |reply| reply.reply_parent.as_str()),
-        );
-        csv.push_field(
-            post.reply
-                .as_ref()
-                .map_or("", |reply| reply.reply_root.as_str()),
-        );
+    async fn export(&mut self, post: &DbPost) -> Result<()> {
+        let mut output = String::new();
 
+        // Add fields with proper CSV escaping and comma delimiters
+        output.push_str(&format!("{},", csv_escape(&post.cid)));
+        output.push_str(&format!("{},", csv_escape(&post.author.key().to_string())));
+        output.push_str(&format!("{},", csv_escape(&post.created_at.to_string())));
+        output.push_str(&format!("{},", csv_escape(&post.language.join(";"))));
+        output.push_str(&format!("{},", csv_escape(&post.text)));
+        output.push_str(&format!(
+            "{},",
+            csv_escape(
+                &post
+                    .reply
+                    .as_ref()
+                    .map_or(String::new(), |reply| reply.reply_parent.to_string())
+            )
+        ));
+        output.push_str(&format!(
+            "{},",
+            csv_escape(
+                &post
+                    .reply
+                    .as_ref()
+                    .map_or(String::new(), |reply| reply.reply_root.to_string())
+            )
+        ));
+
+        // Join labels with semicolons instead of commas to avoid CSV confusion
         let labels = post
             .labels
             .iter()
-            .fold(String::new(), |acc, label| acc + label + ",");
+            .map(|l| csv_escape(l))
+            .collect::<Vec<_>>()
+            .join(";");
+        output.push_str(&format!("{},", labels));
 
-        csv.push_field(labels.as_str());
-
+        // Join tags with semicolons instead of commas to avoid CSV confusion
         let tags = post
             .tags
             .iter()
-            .fold(String::new(), |acc, tag| acc + tag + ",");
+            .map(|t| csv_escape(t))
+            .collect::<Vec<_>>()
+            .join(";");
+        output.push_str(&tags);
 
-        csv.push_field(tags.as_str());
-
-        // don't include embeds
-
-        self.writer.write_all(csv.as_slice().as_bytes()).await?;
+        self.writer.write_all(output.as_bytes()).await?;
+        self.writer.write_all(b"\n").await?;
 
         Ok(())
+    }
+}
+
+// a commit turns into a block of Posts
+// is there a way to turn a block of posts into a stream of individual posts?
+
+pub struct PostStream {
+    // inner: Box<dyn futures::Stream<Item = Post> + Unpin + Send>,
+    subscription: crate::RepoSubscription,
+}
+
+impl PostStream {
+    pub async fn new(inner: crate::RepoSubscription) -> Self {
+        PostStream {
+            subscription: inner,
+        }
+    }
+
+    pub async fn stream(&mut self) -> Result<impl futures::Stream<Item = Post> + '_> {
+        let block_stream = self.subscription.stream_commits();
+
+        let stream = block_stream
+            .await
+            .filter_map(|result| async {
+                match result {
+                    Ok(commit) => {
+                        let posts = crate::handle_commit(&commit).await.ok().map(|posts| {
+                            posts
+                                .iter()
+                                .map(|post| Post::from(post.clone()))
+                                .collect::<Vec<_>>()
+                        });
+                        posts.map(futures::stream::iter)
+                    }
+                    Err(e) => {
+                        tracing::error!("Error processing commit: {}", e);
+                        None
+                    }
+                }
+            })
+            .flatten();
+        Ok(stream)
     }
 }
