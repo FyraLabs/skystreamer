@@ -6,14 +6,12 @@ use atrium_api::{
         },
         feed::post::{Record as PostRecord, RecordEmbedRefs},
     },
-    com::atproto::sync::subscribe_repos::Commit,
     types::{string::Did, BlobRef, CidLink, TypedBlobRef, UnTypedBlobRef},
 };
 use cid::multihash::Multihash;
 use cid::Cid;
 use ipld_core::ipld::Ipld;
 use serde::{Deserialize, Serialize};
-use std::future::Future;
 use std::io::Cursor;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -383,7 +381,7 @@ impl TryFrom<Ipld> for FrameHeader {
                 }
             }
         }
-        Err(crate::Error::InvalidFrameType(value).into())
+        Err(crate::Error::InvalidFrameType(value))
     }
 }
 
@@ -422,7 +420,7 @@ impl TryFrom<&[u8]> for Frame {
             }
             _ => {
                 // TODO
-                return Err(crate::Error::InvalidFrameData(value.to_vec()).into());
+                return Err(crate::Error::InvalidFrameData(value.to_vec()));
             }
         };
         let header = FrameHeader::try_from(serde_ipld_dagcbor::from_slice::<Ipld>(left)?)?;

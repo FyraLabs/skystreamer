@@ -2,8 +2,6 @@ use clap::{Parser, ValueEnum};
 use color_eyre::Result;
 use surrealdb::{opt::auth::Root, Surreal};
 
-use crate::exporter::SurrealDbExporter;
-
 use crate::Consumer;
 // use crate::
 #[derive(Debug, ValueEnum, Clone)]
