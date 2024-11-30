@@ -1,6 +1,9 @@
 # SkyStreamer
 
-SkyStreamer is an AT firehose consumer that streams new posts from Bluesky. It does the filtering for you so you can focus on the posts.
+SkyStreamer is an AT Firehose consumer that streams new posts from Bluesky. It provides simplified wrapper data types and a
+streaming API for easy filtering of events on the AT Firehose.
+
+SkyStreamer is based on [ATrium](https://github.com/sugyan/atrium).
 
 ## Why?
 
