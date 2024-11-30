@@ -22,10 +22,10 @@ SkyStreamer collects large amounts of new data streaming from Bluesky itself, wh
 While the network and the data itself is **visibly public** to **everyone**, Some users may be uncomfortable with their data being collected and used in this way, especially for machine learning or similar purposes.
 
 > [!IMPORTANT]
-> SkyStreamer is *not* designed to filter or redact any specific users' data out, and will attempt to store everything it can read from the firehose.
-> So please be mindful of the data you are collecting and how you are using it, and respect their consent if possible.
+> Please be mindful of the data you are collecting and how you are using it, and respect their consent if possible.
 >
-> You may want to manually filter or redact using a script or another tool before publishing or sharing the data.
+> SkyStreamer comes with a [streaming API](https://docs.rs/futures/latest/futures/stream/index.html) that can be used alongside Rust's iterator API, which can be used to filter out data.
+> However, it does ***not*** filter or redact any data by default, you will be responsible for your own data processing.
 >
 > Fyra Labs is not responsible for any misuse of the data collected by SkyStreamer. You are responsible for your own actions.
 
@@ -44,5 +44,4 @@ SkyStreamer was originally implemented as a simple Python script. You can find t
 SkyStreamer is licensed under the MIT License. See the `LICENSE` file for more information.
 
 This software is provided as-is, without any warranty or guarantee of any kind. Use at your own risk.
-
 Fyra Labs is not responsible for any misuse or damage caused by this software.
