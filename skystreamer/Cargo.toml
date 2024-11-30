@@ -20,7 +20,6 @@ atrium-api = { version = "0.24.8", features = ["tokio"] }
 chrono = { version = "0.4.38", features = ["serde"] }
 cid = "0.11.1"
 cid_old = { package = "cid", version = "0.10.1" }
-# color-eyre = "0.6.3"
 futures = "0.3.31"
 ipld-core = "0.4.1"
 rs-car = "0.4.1"
