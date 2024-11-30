@@ -1,13 +1,16 @@
-use atrium_api::app::bsky::embed::images::ImageData;
-use atrium_api::app::bsky::embed::record_with_media::MainMediaRefs;
-use atrium_api::app::bsky::embed::video::MainData as VideoData;
-use atrium_api::app::bsky::feed::post::{Record as PostRecord, RecordEmbedRefs};
-use atrium_api::com::atproto::sync::subscribe_repos::Commit;
-use atrium_api::types::string::Did;
-use atrium_api::types::{BlobRef, CidLink, TypedBlobRef, UnTypedBlobRef};
+use crate::Result;
+use atrium_api::{
+    app::bsky::{
+        embed::{
+            images::ImageData, record_with_media::MainMediaRefs, video::MainData as VideoData,
+        },
+        feed::post::{Record as PostRecord, RecordEmbedRefs},
+    },
+    com::atproto::sync::subscribe_repos::Commit,
+    types::{string::Did, BlobRef, CidLink, TypedBlobRef, UnTypedBlobRef},
+};
 use cid::multihash::Multihash;
 use cid::Cid;
-use color_eyre::Result;
 use ipld_core::ipld::Ipld;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
@@ -334,7 +337,8 @@ where
             }
             .into(),
         )
-        .await?;
+        .await
+        .map_err(|e| crate::Error::AtriumError(e.to_string()))?;
     Ok(bytes)
 }
 // original definition:
@@ -360,10 +364,10 @@ enum FrameHeader {
 }
 
 impl TryFrom<Ipld> for FrameHeader {
-    type Error = color_eyre::eyre::Error;
+    type Error = crate::Error;
 
-    fn try_from(value: Ipld) -> Result<Self, <FrameHeader as TryFrom<Ipld>>::Error> {
-        if let Ipld::Map(map) = value {
+    fn try_from(value: Ipld) -> Result<Self> {
+        if let Ipld::Map(map) = &value {
             if let Some(Ipld::Integer(i)) = map.get("op") {
                 match i {
                     1 => {
@@ -379,7 +383,7 @@ impl TryFrom<Ipld> for FrameHeader {
                 }
             }
         }
-        Err(color_eyre::eyre::eyre!("invalid frame type"))
+        Err(crate::Error::InvalidFrameType(value).into())
     }
 }
 
@@ -396,12 +400,9 @@ pub struct MessageFrame {
 
 #[trait_variant::make(HttpService: Send)]
 pub trait Subscription {
-    async fn next(&mut self) -> Option<Result<Frame, <Frame as TryFrom<&[u8]>>::Error>>;
-}
-
-pub trait CommitHandler {
-    fn handle_commit(&mut self, commit: &Commit) -> impl Future<Output = Result<()>>;
-    fn update_cursor(&self, seq: u64) -> impl Future<Output = Result<()>>;
+    async fn next(
+        &mut self,
+    ) -> Option<std::result::Result<Frame, <Frame as TryFrom<&[u8]>>::Error>>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -411,9 +412,9 @@ pub struct ErrorFrame {
 }
 
 impl TryFrom<&[u8]> for Frame {
-    type Error = color_eyre::eyre::Error;
+    type Error = crate::Error;
 
-    fn try_from(value: &[u8]) -> Result<Self, <Frame as TryFrom<&[u8]>>::Error> {
+    fn try_from(value: &[u8]) -> Result<Self> {
         let mut cursor = Cursor::new(value);
         let (left, right) = match serde_ipld_dagcbor::from_reader::<Ipld, _>(&mut cursor) {
             Err(serde_ipld_dagcbor::DecodeError::TrailingData) => {
@@ -421,7 +422,7 @@ impl TryFrom<&[u8]> for Frame {
             }
             _ => {
                 // TODO
-                return Err(color_eyre::eyre::eyre!("invalid frame type"));
+                return Err(crate::Error::InvalidFrameData(value.to_vec()).into());
             }
         };
         let header = FrameHeader::try_from(serde_ipld_dagcbor::from_slice::<Ipld>(left)?)?;
@@ -447,7 +448,7 @@ impl From<cid_old::Cid> for CidOld {
 }
 impl TryFrom<CidOld> for Cid {
     type Error = cid::Error;
-    fn try_from(value: CidOld) -> Result<Self, Self::Error> {
+    fn try_from(value: CidOld) -> std::result::Result<Self, Self::Error> {
         let version = match value.0.version() {
             cid_old::Version::V0 => cid::Version::V0,
             cid_old::Version::V1 => cid::Version::V1,

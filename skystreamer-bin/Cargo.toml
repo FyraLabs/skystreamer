@@ -1,36 +1,38 @@
 [package]
-name = "skystreamer"
+name = "skystreamer-bin"
 version = "0.1.0"
 edition = "2021"
 
-authors = ["Cappy Ishihara <cappy@fyralabs.com>"]
-description = "AT Firehose collector for Bluesky"
-license = "MIT"
-repository = "https://github.com/korewaChino/skystreamer"
-categories = [
-    "web-programming::websocket",
-    "data-structures",
-    "web-programming::http-client",
-]
-keywords = ["bluesky", "firehose", "atproto", "bluesky-social"]
 
 [dependencies]
 async-trait = "0.1.83"
 atrium-api = { version = "0.24.8", features = ["tokio"] }
+atrium-xrpc-client = { version = "*", default-features = false, features = [
+    "reqwest",
+] }
+reqwest = { version = "0.11.24", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
 chrono = { version = "0.4.38", features = ["serde"] }
 cid = "0.11.1"
 cid_old = { package = "cid", version = "0.10.1" }
-# color-eyre = "0.6.3"
+color-eyre = "0.6.3"
+csv = "1.3.1"
 futures = "0.3.31"
 ipld-core = "0.4.1"
 rs-car = "0.4.1"
 serde = { version = "1.0.215", features = ["derive"] }
-serde_ipld_dagcbor = "0.6.1"
 serde_json = "1.0.133"
+surrealdb = { version = "2.1.2", features = ["http", "protocol-http"] }
 tokio = { version = "1.41.1", features = ["full"] }
 tokio-stream = { version = "0.1.16", features = ["full"] }
 tokio-tungstenite = { version = "0.24.0", features = ["native-tls", "url"] }
 tracing = { version = "0.1.41", features = ["async-await", "log"] }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 trait-variant = "0.1.2"
+update_rate = "2.0.1"
+url = { version = "2.5.4", features = ["serde"] }
+dotenvy = { version = "0.15.7", features = ["clap", "cli"] }
 clap = { version = "4.5.21", features = ["derive", "env"] }
-thiserror = "2.0.3"
+skystreamer = { path = "../skystreamer" }

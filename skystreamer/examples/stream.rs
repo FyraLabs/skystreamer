@@ -1,12 +1,9 @@
-use color_eyre::Result;
-use futures::{pin_mut, Stream, StreamExt};
-use skystreamer::{exporter::PostStream, RepoSubscription};
+// use color_eyre::Result;
+use futures::StreamExt;
+use skystreamer::{stream::PostStream, RepoSubscription};
 
 #[tokio::main]
-pub async fn main() -> Result<()> {
-    // Initialize tracing
-    tracing_subscriber::fmt().with_env_filter("info").init();
-
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create subscription to bsky.network
     let subscription = RepoSubscription::new("bsky.network").await.unwrap();
     // let subscription = repo;

@@ -2,7 +2,9 @@ use clap::{Parser, ValueEnum};
 use color_eyre::Result;
 use surrealdb::{opt::auth::Root, Surreal};
 
-use crate::{exporter, FirehoseConsumer};
+use crate::exporter::SurrealDbExporter;
+
+use crate::Consumer;
 // use crate::
 #[derive(Debug, ValueEnum, Clone)]
 pub enum SurrealAuthType {
@@ -161,24 +163,27 @@ pub struct Config {
 }
 
 impl Config {
-    pub async fn subscribe(&self) -> Result<FirehoseConsumer> {
+    pub async fn consumer(&self) -> Result<Consumer> {
         let exporter = match self.exporter {
             ExporterType::Jsonl => {
                 let file_path = self.file_exporter.file_path.as_ref().unwrap();
                 let file = tokio::fs::File::create(file_path).await?;
-                Box::new(exporter::JsonlExporter::new(file)) as Box<dyn exporter::Exporter>
+                Box::new(crate::exporter::JsonlExporter::new(file))
+                    as Box<dyn crate::exporter::Exporter>
             }
             ExporterType::Csv => {
                 let file_path = self.file_exporter.file_path.as_ref().unwrap();
                 let file = tokio::fs::File::create(file_path).await?;
-                Box::new(exporter::CsvExporter::new(file)) as Box<dyn exporter::Exporter>
+                Box::new(crate::exporter::CsvExporter::new(file))
+                    as Box<dyn crate::exporter::Exporter>
             }
             ExporterType::Surrealdb => {
                 let conn = self.surreal_conn.get_surreal_conn().await?;
-                Box::new(exporter::SurrealDbExporter::new(conn)) as Box<dyn exporter::Exporter>
+                Box::new(crate::exporter::SurrealDbExporter::new(conn))
+                    as Box<dyn crate::exporter::Exporter>
             }
         };
 
-        Ok(FirehoseConsumer::new(exporter))
+        Ok(Consumer::new(exporter))
     }
 }

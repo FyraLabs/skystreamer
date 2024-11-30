@@ -1,38 +1,11 @@
-use crate::{exporter::{POSTS_TABLE, USERS_TABLE}, types::{Blob, ExternalLink, Media, PostData}};
+// use crate::{types::{Blob, ExternalLink, Media, PostData}};
 use atrium_api::{app::bsky::actor::defs::ProfileViewDetailedData, types::string::Did};
 use serde::{Deserialize, Serialize};
+use skystreamer::types::{Blob, ExternalLink, Media, PostData};
 use surrealdb::{sql::Thing, RecordId};
 use url::Url;
 
-// example post:
-
-// {
-// 	author: 'did:plc:fn5fmoghtuypw2gka67oqs7p',
-// 	created_at: '2024-11-29T03:01:11.389Z',
-// 	embed: {
-// 		external: [
-// 			{
-// 				description: '',
-// 				py_type: 'app.bsky.embed.external#external',
-// 				thumb: NULL,
-// 				title: 'Redirecting...',
-// 				uri: 'https://www.facebook.com/share/v/14z4vJf6kQ/?mibextid=WC7FNe'
-// 			}
-// 		],
-// 		images: [],
-// 		record: [],
-// 		videos: []
-// 	},
-// 	id: post:bafyreia6v4obvevii54u3itb5zwq6pg56fc3qq5try3wct4s427zs3fvle,
-// 	labels: [],
-// 	language: 'en',
-// 	post_id: '3lc2looeiuc2n',
-// 	reply: NULL,
-// 	tags: NULL,
-// 	text: 'www.facebook.com/share/v/14z4...
-
-// www.facebook.com/share/v/14z4...'
-// }
+use crate::exporter::{POSTS_TABLE, USERS_TABLE};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ReplyRef {
@@ -62,7 +35,7 @@ fn parse_bsky_img_url(url: Url) -> Blob {
     let _did = parts.pop().unwrap();
 
     // we should be able to just prepend the `did:plc:` prefix to the DID
-    
+
     let (cid, ext) = cid_blob.split_once('@').unwrap();
 
     Blob {
@@ -70,7 +43,6 @@ fn parse_bsky_img_url(url: Url) -> Blob {
         cid: cid.to_string(),
         mime_type: format!("image/{}", ext),
     }
-
 }
 
 // A Bluesky user profile, A minimized version of ProfileViewBasic
@@ -81,7 +53,7 @@ pub struct User {
     pub did: Option<Did>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<Thing>,
-    
+
     /// Display name of user
     pub display_name: Option<String>,
     /// Handle/Domain name of user
@@ -113,11 +85,32 @@ impl From<ProfileViewDetailedData> for User {
             id: None,
             display_name: profile.display_name.clone(),
             handle: profile.handle.to_string(),
-            avatar: profile.avatar.as_ref().map(|url| parse_bsky_img_url(Url::parse(url).unwrap())),
-            labels: profile.labels.as_ref().map(|labels| labels.iter().map(|label| label.val.as_str().to_string()).collect()).unwrap_or_default(),
-            created_at: profile.created_at.clone().map(|date| date.as_str().parse().unwrap()),
-            indexed_at: profile.indexed_at.clone().map(|date| date.as_str().parse().unwrap()),
-            banner: profile.banner.as_ref().map(|url| parse_bsky_img_url(Url::parse(url).unwrap())),
+            avatar: profile
+                .avatar
+                .as_ref()
+                .map(|url| parse_bsky_img_url(Url::parse(url).unwrap())),
+            labels: profile
+                .labels
+                .as_ref()
+                .map(|labels| {
+                    labels
+                        .iter()
+                        .map(|label| label.val.as_str().to_string())
+                        .collect()
+                })
+                .unwrap_or_default(),
+            created_at: profile
+                .created_at
+                .clone()
+                .map(|date| date.as_str().parse().unwrap()),
+            indexed_at: profile
+                .indexed_at
+                .clone()
+                .map(|date| date.as_str().parse().unwrap()),
+            banner: profile
+                .banner
+                .as_ref()
+                .map(|url| parse_bsky_img_url(Url::parse(url).unwrap())),
             description: profile.description.clone(),
             followers: profile.followers_count.map(|count| count as usize),
             following: profile.follows_count.map(|count| count as usize),
@@ -126,9 +119,8 @@ impl From<ProfileViewDetailedData> for User {
     }
 }
 
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Post {
+pub struct SurrealPostRep {
     /// Author of post
     ///
     /// DID of the author
@@ -137,9 +129,6 @@ pub struct Post {
     /// To get the full DID using ATProto, you can prepend it back.
     pub author: surrealdb::value::RecordId,
 
-    #[serde(skip)]
-    pub author_did: Option<Did>,
-
     /// Date and time of post creation
     pub created_at: surrealdb::sql::Datetime,
     /// Text content of post
@@ -147,9 +136,6 @@ pub struct Post {
     /// CID of post
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<Thing>,
-
-    #[serde(skip)]
-    pub cid: String,
     /// Language(s) of post
     ///
     pub language: Vec<String>,
@@ -162,15 +148,14 @@ pub struct Post {
     pub embed: Option<Embed>,
 }
 
-impl Post {
+impl SurrealPostRep {
     #[tracing::instrument]
     pub fn new(data: PostData) -> Self {
-        Post {
+        SurrealPostRep {
             // author: data.author.to_string().trim_start_matches("did:plc:").to_string(),
             author: RecordId::from_table_key(USERS_TABLE, data.author.to_string().trim_start_matches("did:plc:").to_string()),
-            author_did: Some(data.author.clone()), 
             id: data.cid.to_string().parse().ok(),
-            cid: data.cid.to_string(),
+
             created_at: data.record.created_at.as_str().parse().unwrap(),
             language: data
                 .record
@@ -234,7 +219,6 @@ impl Post {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     pub use super::*;
@@ -242,7 +226,6 @@ mod tests {
     // const CAPPY_DID: &str = "did:plc:x4pssacf24wuotdl65zntnsr";
 
     const PUNIRU_CID: &str = "bafkreihsq6kzrgb2jzyg3jowj4bfw5hwoh2dx7zagcplh5ooe2b5cdgche";
-
 
     #[test]
     fn test_parse_bsky_img_url() {

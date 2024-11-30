@@ -4021,6 +4021,30 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "atrium-api",
+ "chrono",
+ "cid 0.10.1",
+ "cid 0.11.1",
+ "clap 4.5.21",
+ "futures",
+ "ipld-core",
+ "rs-car",
+ "serde",
+ "serde_ipld_dagcbor",
+ "serde_json",
+ "thiserror 2.0.3",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite 0.24.0",
+ "tracing",
+ "trait-variant",
+]
+
+[[package]]
+name = "skystreamer-bin"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "atrium-api",
  "atrium-xrpc-client",
  "chrono",
  "cid 0.10.1",
@@ -4034,8 +4058,8 @@ dependencies = [
  "reqwest 0.11.27",
  "rs-car",
  "serde",
- "serde_ipld_dagcbor",
  "serde_json",
+ "skystreamer",
  "surrealdb",
  "tokio",
  "tokio-stream",
