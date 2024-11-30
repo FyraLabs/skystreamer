@@ -3,6 +3,16 @@ name = "skystreamer-bin"
 version = "0.1.0"
 edition = "2021"
 
+authors = ["Cappy Ishihara <cappy@fyralabs.com>"]
+description = "AT Firehose collector for Bluesky"
+license = "MIT"
+repository = "https://github.com/FyraLabs/skystreamer"
+categories = [
+    "web-programming::websocket",
+    "data-structures",
+    "web-programming::http-client",
+]
+keywords = ["bluesky", "firehose", "atproto", "bluesky-social"]
 
 [dependencies]
 async-trait = "0.1.83"

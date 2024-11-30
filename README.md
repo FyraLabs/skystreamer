@@ -26,6 +26,8 @@ While the network and the data itself is **visibly public** to **everyone**, Som
 > So please be mindful of the data you are collecting and how you are using it, and respect their consent if possible.
 >
 > You may want to manually filter or redact using a script or another tool before publishing or sharing the data.
+>
+> Fyra Labs is not responsible for any misuse of the data collected by SkyStreamer. You are responsible for your own actions.
 
 ## Usage
 
@@ -36,3 +38,11 @@ You may also stream the data into a CSV file, or a newline-delimited JSON file (
 ## Older implementation
 
 SkyStreamer was originally implemented as a simple Python script. You can find the old implementation in the `legacy` directory.
+
+## License
+
+SkyStreamer is licensed under the MIT License. See the `LICENSE` file for more information.
+
+This software is provided as-is, without any warranty or guarantee of any kind. Use at your own risk.
+
+Fyra Labs is not responsible for any misuse or damage caused by this software.
