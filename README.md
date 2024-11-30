@@ -38,6 +38,10 @@ By default, SkyStreamer will stream its data into a SurrealDB database. You may 
 
 You may also stream the data into a CSV file, or a newline-delimited JSON file (JSONL).
 
+### As a library
+
+Please see the `skystreamer/examples` directory for examples on how to use SkyStreamer as a library.
+
 ## Older implementation
 
 SkyStreamer was originally implemented as a simple Python script. You can find the old implementation in the `legacy` directory.
