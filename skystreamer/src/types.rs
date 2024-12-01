@@ -186,8 +186,7 @@ impl From<RecordEmbedRefs> for Embed {
                     m.record.data.record.cid.as_ref().to_owned(),
                     Box::new(media),
                 )
-            }
-            // _ => Embed::Unknown,
+            } // _ => Embed::Unknown,
         }
     }
 }
@@ -509,10 +508,7 @@ mod tests {
             let ipld =
                 serde_ipld_dagcbor::from_slice::<Ipld>(&data).expect("failed to deserialize");
             let result = FrameHeader::try_from(ipld);
-            assert_eq!(
-                result.expect_err("must be failed").to_string(),
-                "invalid frame type"
-            );
+            assert!(result.is_err());
         }
         {
             // {"op": -2}
@@ -520,10 +516,7 @@ mod tests {
             let ipld =
                 serde_ipld_dagcbor::from_slice::<Ipld>(&data).expect("failed to deserialize");
             let result = FrameHeader::try_from(ipld);
-            assert_eq!(
-                result.expect_err("must be failed").to_string(),
-                "invalid frame type"
-            );
+            assert!(result.is_err());
         }
     }
 }

@@ -6,7 +6,7 @@ use atrium_api::{
 };
 use atrium_xrpc_client::reqwest::ReqwestClient;
 use chrono::NaiveDateTime;
-use color_eyre::{eyre::OptionExt, Result};
+use color_eyre::Result;
 use ipld_core::ipld::Ipld;
 use skystreamer::types::Post as SPost;
 use std::{
@@ -17,8 +17,7 @@ use surrealdb::{Connection, RecordId, Surreal};
 use tokio::io::AsyncWriteExt;
 pub const POSTS_TABLE: &str = "post";
 pub const USERS_TABLE: &str = "user";
-use crate::surreal_types::{SurrealPostRep, User};
-use crate::LOCAL_THREAD_POOL;
+use crate::surreal_types::User;
 
 pub struct XrpcQuerier {
     pub client: Arc<AtpAgent<MemorySessionStore, ReqwestClient>>,

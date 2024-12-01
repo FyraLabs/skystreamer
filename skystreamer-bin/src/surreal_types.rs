@@ -175,7 +175,6 @@ pub struct SurrealPostRep {
 
 impl From<skystreamer::types::Post> for SurrealPostRep {
     fn from(post: skystreamer::types::Post) -> Self {
-
         // get current timezone
         let now = chrono::Local::now();
         let now_tz = now.timezone();
