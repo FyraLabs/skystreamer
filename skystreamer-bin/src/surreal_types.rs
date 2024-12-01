@@ -1,7 +1,7 @@
 // use crate::{types::{Blob, ExternalLink, Media, PostData}};
 use atrium_api::{app::bsky::actor::defs::ProfileViewDetailedData, types::string::Did};
 use serde::{Deserialize, Serialize};
-use skystreamer::types::{Blob, ExternalLink, Media, PostData};
+use skystreamer::types::{Blob, ExternalLink, Media};
 use surrealdb::{sql::Thing, RecordId};
 use url::Url;
 
@@ -14,14 +14,39 @@ pub struct ReplyRef {
     /// Root of reply
     pub reply_root: RecordId,
 }
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub struct Embed {
-    /// External links associated with post
-    pub external_links: Option<Vec<ExternalLink>>,
-    /// Media associated with post
-    pub media: Option<Vec<Media>>,
-    /// Link to another Post quoted by the current post
-    pub quote: Option<RecordId>,
+// #[derive(Debug, Serialize, Deserialize, Default, Clone)]
+// pub struct Embed {
+//     /// External links associated with post
+//     pub external_links: Option<Vec<ExternalLink>>,
+//     /// Media associated with post
+//     pub media: Option<Vec<Media>>,
+//     /// Link to another Post quoted by the current post
+//     pub quote: Option<RecordId>,
+// }
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum Embed {
+    Media(Vec<Media>),
+    External(ExternalLink),
+    Record(RecordId),
+    RecordWithMedia { record: RecordId, media: Vec<Media> },
+    Unknown,
+}
+
+impl From<&skystreamer::types::Embed> for Embed {
+    fn from(embed: &skystreamer::types::Embed) -> Self {
+        match embed {
+            skystreamer::types::Embed::Media(media) => Embed::Media(media.clone()),
+            skystreamer::types::Embed::External(link) => Embed::External(link.clone()),
+            skystreamer::types::Embed::Record(record) => {
+                Embed::Record(RecordId::from_table_key(POSTS_TABLE, record.to_string()))
+            }
+            skystreamer::types::Embed::RecordWithMedia(record, media) => Embed::RecordWithMedia {
+                record: RecordId::from_table_key(POSTS_TABLE, record.to_string()),
+                media: *media.clone(),
+            },
+            _ => Embed::Unknown,
+        }
+    }
 }
 
 fn parse_bsky_img_url(url: Url) -> Blob {
@@ -148,77 +173,46 @@ pub struct SurrealPostRep {
     pub embed: Option<Embed>,
 }
 
-impl SurrealPostRep {
-    #[tracing::instrument]
-    pub fn new(data: PostData) -> Self {
-        SurrealPostRep {
-            // author: data.author.to_string().trim_start_matches("did:plc:").to_string(),
-            author: RecordId::from_table_key(USERS_TABLE, data.author.to_string().trim_start_matches("did:plc:").to_string()),
-            id: data.cid.to_string().parse().ok(),
+impl From<skystreamer::types::Post> for SurrealPostRep {
+    fn from(post: skystreamer::types::Post) -> Self {
 
-            created_at: data.record.created_at.as_str().parse().unwrap(),
-            language: data
-                .record
-                .langs
-                .as_ref()
-                .map(|langs| langs.iter().map(|lang| lang.as_ref().to_string()).collect())
-                .unwrap_or_default(),
-            text: data.record.text.clone(),
-            reply: data.record.reply.as_ref().map(|reply| ReplyRef {
-                reply_parent: RecordId::from_table_key(POSTS_TABLE, reply.parent.cid.as_ref().to_string()),
-                reply_root: RecordId::from_table_key(POSTS_TABLE, reply.root.cid.as_ref().to_string()),
-            }),
-            labels: data
-                .record
-                .labels
-                .as_ref()
-                .map_or_else(Vec::new, |labels| match labels {
-                    atrium_api::types::Union::Refs(
-                        atrium_api::app::bsky::feed::post::RecordLabelsRefs::ComAtprotoLabelDefsSelfLabels(
-                            values,
-                        ),
-                    ) => values.data.values.iter().map(|label| label.val.as_str().to_string()).collect(),
-                    _ => Vec::new(),
-                }),
-            tags: data.record.tags.as_ref().map_or_else(Vec::new, |tags| tags.iter().map(|tag| tag.to_string()).collect()),
-            embed: data.record.embed.as_ref().map(|embed| {
-                // let mut media: Vec<Media> = Vec::new();
-                let embedded_media = data.get_media();
-                let external_links = match &embed {
-                    atrium_api::types::Union::Refs(
-                        atrium_api::app::bsky::feed::post::RecordEmbedRefs::AppBskyEmbedExternalMain(
-                            external,
-                        ),
-                    ) => Some(vec![external.data.clone().external.data]),
-                    _ => None,
-                };
+        // get current timezone
+        let now = chrono::Local::now();
+        let now_tz = now.timezone();
+        // post.created_at.offset();
 
-                let quote = match &embed {
-                    atrium_api::types::Union::Refs(
-                        atrium_api::app::bsky::feed::post::RecordEmbedRefs::AppBskyEmbedRecordWithMediaMain(embed_data)
-                    ) => Some(&embed_data.record.data.record.cid),
-                    atrium_api::types::Union::Refs(
-                        atrium_api::app::bsky::feed::post::RecordEmbedRefs::AppBskyEmbedRecordMain(embed_data)
-                    ) => Some(&embed_data.data.record.cid),
-                    _ => None,
-                };
-
-                Embed {
-                    external_links: external_links.map(|external_links| {
-                        external_links
-                            .iter()
-                            .map(|external_link| external_link.to_owned().into())
-                            .collect()
-                    }),
-                    media: Some(embedded_media.unwrap_or_default()),
-                    quote: quote.map(|quote| RecordId::from_table_key(POSTS_TABLE, quote.as_ref().to_string())),
-                }
-            }),
+        // let time_now_utc = chrono::Utc::now().naive_local();
+        // let created_at = post.created_at.to_utc();
+        let created_at: chrono::DateTime<chrono::Utc> = post.created_at.to_utc();
+        let created_at_local = created_at.with_timezone(&now_tz);
+        // tracing::info!("Time: {:?}", post.created_at);
+        // check if time is some reason in the future
+        if created_at_local > now {
+            tracing::warn!("Post created_at is in the future!?: {:?}", created_at);
         }
-        // todo!()
+        SurrealPostRep {
+            author: RecordId::from_table_key(
+                USERS_TABLE,
+                post.author
+                    .to_string()
+                    .strip_prefix("did:plc:")
+                    .unwrap()
+                    .to_string(),
+            ),
+            created_at: post.created_at.to_utc().into(),
+            text: post.text,
+            id: None, // This will be filled in later by the exporter
+            embed: post.embed.as_ref().map(|embed| embed.into()),
+            language: post.language,
+            reply: post.reply.as_ref().map(|reply| ReplyRef {
+                reply_parent: RecordId::from_table_key(POSTS_TABLE, reply.parent.to_string()),
+                reply_root: RecordId::from_table_key(POSTS_TABLE, reply.root.to_string()),
+            }),
+            tags: post.tags,
+            labels: post.labels,
+        }
     }
 }
-
 #[cfg(test)]
 mod tests {
     pub use super::*;

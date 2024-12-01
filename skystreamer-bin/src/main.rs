@@ -3,11 +3,62 @@
 mod config;
 mod exporter;
 mod surreal_types;
+use std::sync::Arc;
+
 use futures::StreamExt;
 pub struct Consumer {
     rate_counter: update_rate::DiscreteRateCounter,
     exporter: Box<dyn exporter::Exporter>,
 }
+#[derive(Debug)]
+pub struct TaskQueue {
+    workers: Vec<tokio::task::JoinHandle<()>>,
+    semaphore: Arc<tokio::sync::Semaphore>,
+}
+
+impl TaskQueue {
+    pub fn new() -> Self {
+        TaskQueue {
+            workers: Vec::new(),
+            semaphore: Arc::new(tokio::sync::Semaphore::new(16)),
+        }
+    }
+
+    /// Add a new task on the queue from a tokio join handle
+    /// Remove the task from the queue when it finishes
+    pub fn add_task(&mut self, task: tokio::task::JoinHandle<()>) {
+        self.workers.retain(|worker| !worker.is_finished());
+        // tracing::info!("Running workers: {}", self.workers.len());
+        let semaphore = self.semaphore.clone();
+        let worker = tokio::spawn(async move {
+            let _permit = semaphore.acquire().await;
+            tracing::info!("Available permits: {}", semaphore.available_permits());
+            tokio::join!(task).0.unwrap();
+            // release permit when task is done
+        });
+        self.workers.push(worker);
+    }
+
+    pub fn handle_interrupt(&mut self) {
+        for worker in self.workers.drain(..) {
+            self.semaphore.clone().close();
+            tracing::info!("Cancelling workers");
+            worker.abort();
+        }
+    }
+}
+
+impl Default for TaskQueue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+thread_local! {
+    static LOCAL_THREAD_POOL: std::cell::RefCell<TaskQueue> = std::cell::RefCell::new(TaskQueue::new());
+}
+
+// const GLOBAL_THREAD_POOL: OnceCell<ThreadPool> = OnceCell::new();
 
 impl Consumer {
     pub fn new(exporter: Box<dyn exporter::Exporter>) -> Self {
@@ -159,16 +210,17 @@ impl Consumer {
 use clap::Parser;
 use color_eyre::Result;
 use skystreamer::{stream::PostStream, RepoSubscription};
+
 use update_rate::RateCounter;
 // use skystreamer::RepoSubscription;
 // #![feature(cli)]
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
 
     tracing_subscriber::fmt()
         .with_target(false)
-        .with_thread_ids(false)
+        .with_thread_ids(true)
         .with_level(true)
         .with_file(false)
         .compact()
@@ -176,12 +228,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_env_filter("info")
         .init();
 
-    let config = crate::config::Config::parse();
-
-    println!("{:?}", config);
     // start consumer
-    config.consumer().await?.start().await?;
+    // let main_task = tokio::spawn(async move {
+    //     let config = crate::config::Config::parse();
+    //     println!("{:?}", config);
+    //     let mut consumer = config.consumer().await?;
+    //     consumer.start().await?;
+    //     Ok::<(), color_eyre::Report>(())
+    // });
+    // config.consumer().await?.start().await?;
 
+    let config = crate::config::Config::parse();
+    let mut consumer = config.consumer().await?;
+
+    ctrlc::set_handler(move || {
+        LOCAL_THREAD_POOL.with(|pool| {
+            pool.borrow_mut().handle_interrupt();
+        });
+        std::process::exit(0);
+    })
+    .expect("Error setting Ctrl-C handler");
+
+    consumer.start().await?;
 
     Ok(())
 }

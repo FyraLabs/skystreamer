@@ -1,18 +1,24 @@
+use atrium_api::app::bsky::actor::get_profile;
 use atrium_api::{
     agent::{store::MemorySessionStore, AtpAgent},
     app::bsky::actor::defs::ProfileViewDetailedData,
-    types::string::Did,
+    types::string::{AtIdentifier, Did},
 };
 use atrium_xrpc_client::reqwest::ReqwestClient;
 use chrono::NaiveDateTime;
 use color_eyre::{eyre::OptionExt, Result};
+use ipld_core::ipld::Ipld;
 use skystreamer::types::Post as SPost;
-use std::sync::{Arc, OnceLock};
+use std::{
+    str::FromStr,
+    sync::{Arc, OnceLock},
+};
 use surrealdb::{Connection, RecordId, Surreal};
 use tokio::io::AsyncWriteExt;
 pub const POSTS_TABLE: &str = "post";
 pub const USERS_TABLE: &str = "user";
-use crate::surreal_types::User;
+use crate::surreal_types::{SurrealPostRep, User};
+use crate::LOCAL_THREAD_POOL;
 
 pub struct XrpcQuerier {
     pub client: Arc<AtpAgent<MemorySessionStore, ReqwestClient>>,
@@ -82,6 +88,54 @@ impl XrpcQuerier {
 
         Ok(actor)
     }
+
+    pub async fn get_profile_xrpc(&self, did: Did) -> Result<User> {
+        let permit = self.semaphore.acquire().await?;
+
+        let did_str = did.to_string();
+        let now = chrono::Utc::now().naive_utc();
+
+        // Check if profile is in cache first and not expired
+        let cache = PROFILE_CACHE.with(|pc| pc.cache.clone());
+        let mut cache = cache.write().await;
+
+        if let Some((cached_time, profile)) = cache.get(&did_str).map(|(t, p)| (*t, p.clone())) {
+            // 4 hour expiration time
+            if now.signed_duration_since(cached_time).num_hours() < 4 {
+                tracing::trace!(?profile, "Profile cache hit!");
+                drop(permit);
+                return Ok(profile);
+            }
+            // Remove expired entry
+            cache.remove(&did_str);
+        }
+        drop(cache);
+
+        let actor = self
+            .client
+            .api
+            .app
+            .bsky
+            .actor
+            .get_profile(get_profile::Parameters {
+                data: get_profile::ParametersData {
+                    actor: AtIdentifier::Did(did),
+                },
+                extra_data: Ipld::Null,
+            })
+            .await?
+            .data;
+
+        let actor: User = actor.into();
+
+        let cache = PROFILE_CACHE.with(|pc| pc.cache.clone());
+        let mut cache = cache.write().await;
+        cache.insert(did_str, (now, actor.clone()));
+
+        drop(permit);
+
+        Ok(actor)
+    }
 }
 
 pub struct ProfileCache {
@@ -107,6 +161,16 @@ thread_local! {
     static PROFILE_CACHE: ProfileCache = ProfileCache::new();
 }
 
+pub struct DryRunExporter;
+
+#[async_trait::async_trait]
+impl Exporter for DryRunExporter {
+    async fn export(&mut self, post: &SPost) -> Result<()> {
+        tracing::info!("Dry run: {:?}", post);
+        Ok(())
+    }
+}
+
 #[async_trait::async_trait]
 pub trait Exporter {
     async fn export(&mut self, post: &SPost) -> Result<()>;
@@ -128,78 +192,65 @@ async fn create_relations<C: Connection>(
 ) -> Result<()> {
     // Spawn a background task to fetch and store the user profile
     let db = db.clone();
-    let post_author = post.author.clone();
-    // let post_did = post.author_did.clone();
-    // let post_cid = post.cid.clone();
-    // tokio::spawn(async move {
-    //     // let post_cid = post.cid.clone();
-    //     // let permit = PROFILE_SEMAPHORE.with(|s| s.acquire()).await.unwrap();
-    //     if let Err(e) = async {
-    //         let actor = XrpcQuerier::get()
-    //             .get_profile(post_did.ok_or_eyre("Post author DID is missing")?)
-    //             .await?;
+    let post_author = post.author.key().to_string();
+    let post_did = Did::from_str(&format!("did:plc:{}", post.author.key()))
+        .map_err(|e| color_eyre::eyre::eyre!("Invalid DID: {}", e))?;
+    let post_cid = post
+        .id
+        .clone()
+        .ok_or_else(|| color_eyre::eyre::eyre!("Post has no ID"))?
+        .id
+        .to_string();
+    let actor = XrpcQuerier::get().get_profile_xrpc(post_did).await.ok();
 
-    //         let _: Option<User> = db
-    //             .upsert((USERS_TABLE, post_author.key().to_owned()))
-    //             .content(actor)
-    //             .await?;
+    // tracing::info!("Creating relations for post: {}", post_cid);
+    if let Err(e) = async {
+        let _: Option<User> = db
+            .upsert((USERS_TABLE, &post_author))
+            .content(actor)
+            .await?;
 
-    //         let _ = db
-    //             .query("BEGIN")
-    //             .query("RELATE $user->author->$post")
-    //             .bind(("user", post_author))
-    //             .bind(("post", RecordId::from_table_key(POSTS_TABLE, post_cid)))
-    //             .query("COMMIT")
-    //             .await?;
-    //         Ok::<_, color_eyre::Report>(())
-    //     }
-    //     .await
-    //     {
-    //         tracing::error!("Failed to fetch and store user profile: {}", e);
-    //     }
-    //     // drop(permit); // Explicitly drop the permit when done
+        db.query("RELATE $user->author->$post")
+            .bind(("user", post_author))
+            .bind(("post", RecordId::from_table_key(POSTS_TABLE, post_cid)))
+            .await?;
+
+        Ok::<_, color_eyre::Report>(())
+    }
+    .await
+    {
+        tracing::error!("Failed to create relations: {:?}", e);
+    }
+
+    // LOCAL_THREAD_POOL.with(|tp| {
+    //     tp.borrow_mut().add_task(task);
+    //     // tracing::info!("Workers: {}", tp.borrow().workers.len());
+    //     // tp.borrow().workers.len()
     // });
+
     Ok(())
 }
 
 #[async_trait::async_trait]
 impl<C: Connection> Exporter for SurrealDbExporter<C> {
     async fn export(&mut self, post: &SPost) -> Result<()> {
-        todo!();
-        // tracing::info!("Exporting post: {:?}", post);
-        // let res: Result<Option<crate::surreal_types::SurrealPostRep>> = self
-        //     .db
-        //     .upsert((POSTS_TABLE, &post.cid))
-        //     .content({
-        //         // Strip out some unneeded fields for the post
-        //         // let mut post_clone = post.clone();
-        //         // post_clone.cid = None;
-        //         // post_clone
+        let db = self.db.clone();
+        let post = post.clone();
+        tokio::spawn(async move {
+            let post_rep: crate::surreal_types::SurrealPostRep = post.clone().into();
+            let res: Option<crate::surreal_types::SurrealPostRep> = db
+                .upsert((POSTS_TABLE, &post.id.to_string()))
+                .content(post_rep)
+                .await
+                .map_err(|e| color_eyre::Report::new(e))?;
 
-        //         // post_clone.author = format!("r'user:{}'", &post.author);
-
-        //         post.clone()
-        //     })
-        //     .await
-        //     .map_err(|e| color_eyre::Report::new(e));
-
-        // if let Err(e) = res {
-        //     tracing::error!(?post, "Failed to export post: {:?}", e);
-        // } else {
-        //     // tracing::info!("Exported post: {:?}", a);
-        //     todo!();
-        //     // let surreal_post: crate::surreal_types::SurrealPostRep = post.clone().into();
-        //     // create_relations(&self.db, &surreal_post).await?;
-        // }
-
-        // Right now the
-
-        // if let Err(e) = a {
-        //     tracing::error!("Failed to export post: {:?}", e);
-        // } else {
-        //     tracing::info!("Exported post: {:?}", a);
-        // }
-
+            create_relations(
+                &db,
+                &res.ok_or_else(|| color_eyre::eyre::eyre!("Post not found!"))?,
+            )
+            .await?;
+            Ok::<_, color_eyre::Report>(())
+        });
         Ok(())
     }
 }
@@ -238,67 +289,44 @@ impl<W: tokio::io::AsyncWrite + Unpin> CsvExporter<W> {
 }
 
 fn csv_escape(s: &str) -> String {
-    format!(
-        "\"{}\"",
-        s.replace('"', "\"\"")
-            .replace('\n', "\\n")
-            .replace('\r', "\\r")
-            .replace('\t', "\\t")
-            .replace(',', "\\,")
-    )
+    s.replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+        // .replace(',', "\\,")
+        .to_string()
 }
 
 #[async_trait::async_trait]
 impl<W: tokio::io::AsyncWrite + Unpin + Send> Exporter for CsvExporter<W> {
     async fn export(&mut self, post: &SPost) -> Result<()> {
-        todo!();
-        // let mut output = String::new();
+        let mut writer = csv_async::AsyncWriter::from_writer(&mut self.writer);
 
-        // // Add fields with proper CSV escaping and comma delimiters
-        // output.push_str(&format!("{},", csv_escape(&post.cid)));
-        // output.push_str(&format!("{},", csv_escape(&post.author.key().to_string())));
-        // output.push_str(&format!("{},", csv_escape(&post.created_at.to_string())));
-        // output.push_str(&format!("{},", csv_escape(&post.language.join(";"))));
-        // output.push_str(&format!("{},", csv_escape(&post.text)));
-        // output.push_str(&format!(
-        //     "{},",
-        //     csv_escape(
-        //         &post
-        //             .reply
-        //             .as_ref()
-        //             .map_or(String::new(), |reply| reply.reply_parent.to_string())
-        //     )
-        // ));
-        // output.push_str(&format!(
-        //     "{},",
-        //     csv_escape(
-        //         &post
-        //             .reply
-        //             .as_ref()
-        //             .map_or(String::new(), |reply| reply.reply_root.to_string())
-        //     )
-        // ));
+        // writer
+        //     .write_record(&[
+        //         "ID",
+        //         "Author",
+        //         "Content",
+        //         "Created At",
+        //         "Text",
+        //         "Labels",
+        //         "Tags",
+        //     ])
+        //     .await?;
+        // note: this may look weird, but trust me this will output a completely valid RFC 4180 CSV
+        // the linebreaks will look weird and enclosed in quotes
+        writer
+            .write_record(&[
+                post.id.to_string(),
+                post.author.to_string(),
+                post.text.to_string(),
+                post.created_at.to_string(),
+                post.text.to_string(),
+                post.labels.join(";"),
+                post.tags.join(";"),
+            ])
+            .await?;
 
-        // // Join labels with semicolons instead of commas to avoid CSV confusion
-        // let labels = post
-        //     .labels
-        //     .iter()
-        //     .map(|l| csv_escape(l))
-        //     .collect::<Vec<_>>()
-        //     .join(";");
-        // output.push_str(&format!("{},", labels));
-
-        // // Join tags with semicolons instead of commas to avoid CSV confusion
-        // let tags = post
-        //     .tags
-        //     .iter()
-        //     .map(|t| csv_escape(t))
-        //     .collect::<Vec<_>>()
-        //     .join(";");
-        // output.push_str(&tags);
-
-        // self.writer.write_all(output.as_bytes()).await?;
-        // self.writer.write_all(b"\n").await?;
+        writer.flush().await?;
 
         Ok(())
     }

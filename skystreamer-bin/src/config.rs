@@ -23,13 +23,17 @@ pub enum ExporterType {
     /// Export to a SurrealDB instance
     #[default]
     Surrealdb,
+
+    /// Do not export anywhere, just log the data.
+    /// This is useful for testing
+    DryRun,
 }
 
 #[derive(Parser, Debug, Clone)]
 pub struct FileExporterOptions {
     /// Path to the file to export to
     #[clap(
-        short = 'f',
+        short = 'o',
         long,
         required_if_eq("exporter", "jsonl"),
         required_if_eq("exporter", "csv"),
@@ -81,7 +85,7 @@ pub struct SurrealDbConn {
         long,
         required_if_eq_any([("auth_type", "Root"), ("auth_type", "Namespace")]),
         env = "SURREAL_USERNAME",
-        group = "surrealdb"
+        // group = "surrealdb"
     )]
     pub username: Option<String>,
     /// Password for authentication
@@ -90,9 +94,9 @@ pub struct SurrealDbConn {
     #[clap(
         short = 'p',
         long,
-        required_if_eq("auth_type", "UsernamePassword"),
+        required_if_eq_any([("auth_type", "Root"), ("auth_type", "Namespace")]),
         env = "SURREAL_PASSWORD",
-        group = "surrealdb"
+        // group = "surrealdb"
     )]
     pub password: Option<String>,
 
@@ -179,6 +183,9 @@ impl Config {
                 let conn = self.surreal_conn.get_surreal_conn().await?;
                 Box::new(crate::exporter::SurrealDbExporter::new(conn))
                     as Box<dyn crate::exporter::Exporter>
+            }
+            ExporterType::DryRun => {
+                Box::new(crate::exporter::DryRunExporter) as Box<dyn crate::exporter::Exporter>
             }
         };
 

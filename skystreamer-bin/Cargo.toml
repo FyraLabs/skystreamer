@@ -14,6 +14,10 @@ categories = [
 ]
 keywords = ["bluesky", "firehose", "atproto", "bluesky-social"]
 
+[[bin]]
+name = "skystreamer"
+path = "src/main.rs"
+
 [dependencies]
 async-trait = "0.1.83"
 atrium-api = { version = "0.24.8", features = ["tokio"] }
@@ -46,3 +50,5 @@ url = { version = "2.5.4", features = ["serde"] }
 dotenvy = { version = "0.15.7", features = ["clap", "cli"] }
 clap = { version = "4.5.21", features = ["derive", "env"] }
 skystreamer = { path = "../skystreamer" }
+csv-async = { version = "1.3.0", features = ["tokio"] }
+ctrlc = "3.4.5"

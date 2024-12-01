@@ -1,9 +1,9 @@
 # SkyStreamer
 
 SkyStreamer is an AT Firehose consumer that streams new posts from Bluesky. It provides simplified wrapper data types and a
-streaming API for easy filtering of events on the AT Firehose.
+streaming API for easy filtering of events on the AT Firehose, based on [ATrium](https://github.com/sugyan/atrium).
 
-SkyStreamer is based on [ATrium](https://github.com/sugyan/atrium).
+SkyStreamer is part of Project Zenith, an experimental social media analytics project by Fyra Labs.
 
 ## Why?
 
@@ -34,9 +34,19 @@ While the network and the data itself is **visibly public** to **everyone**, Som
 
 ## Usage
 
+SkyStreamer can be used as a library or as a CLI. The library provides a Tokio stream that can be used to stream data from the AT Firehose.
+
+### As a CLI
+
 By default, SkyStreamer will stream its data into a SurrealDB database. You may change this using environment variables or CLI arguments.
 
-You may also stream the data into a CSV file, or a newline-delimited JSON file (JSONL).
+You may also stream the data into an [IETF RFC 4180](https://www.ietf.org/rfc/rfc4180.txt) CSV-formatted file, or log it into the console.
+
+```shell
+skystreamer -E csv -o data.csv
+```
+
+See `skystreamer --help` for more information.
 
 ### As a library
 

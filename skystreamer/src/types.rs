@@ -131,7 +131,7 @@ impl From<atrium_api::app::bsky::feed::post::ReplyRef> for ReplyRef {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Embed {
-    Images(Vec<Image>),
+    Media(Vec<Media>),
     External(ExternalLink),
     Record(Cid),
     RecordWithMedia(Cid, Box<Vec<Media>>),
@@ -141,15 +141,18 @@ pub enum Embed {
 impl From<RecordEmbedRefs> for Embed {
     fn from(value: RecordEmbedRefs) -> Self {
         match value {
-            RecordEmbedRefs::AppBskyEmbedImagesMain(m) => Embed::Images(
+            RecordEmbedRefs::AppBskyEmbedImagesMain(m) => Embed::Media(
                 m.images
                     .clone()
                     .into_iter()
-                    .map(|i| i.data.into())
+                    .map(|i| Media::Image(i.data.into()))
                     .collect(),
             ),
             RecordEmbedRefs::AppBskyEmbedExternalMain(m) => {
                 Embed::External(m.data.external.data.into())
+            }
+            RecordEmbedRefs::AppBskyEmbedVideoMain(m) => {
+                Embed::Media(vec![Media::Video(m.data.clone().into())])
             }
             RecordEmbedRefs::AppBskyEmbedRecordMain(m) => {
                 Embed::Record(m.record.data.cid.as_ref().to_owned())
@@ -184,7 +187,7 @@ impl From<RecordEmbedRefs> for Embed {
                     Box::new(media),
                 )
             }
-            _ => Embed::Unknown,
+            // _ => Embed::Unknown,
         }
     }
 }
