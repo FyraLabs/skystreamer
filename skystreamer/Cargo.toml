@@ -1,6 +1,6 @@
 [package]
 name = "skystreamer"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 authors = ["Cappy Ishihara <cappy@fyralabs.com>"]
@@ -13,6 +13,7 @@ categories = [
     "web-programming::http-client",
 ]
 keywords = ["bluesky", "firehose", "atproto", "bluesky-social"]
+readme = "../README.md"
 
 [dependencies]
 atrium-api = { version = "0.24", features = ["tokio"] }
