@@ -44,8 +44,14 @@ async fn main() -> Result<()> {
     )?;
 
     let language_counter = prometheus_exporter::prometheus::register_int_counter_vec!(
-        "skystreamer_bsky_posts_by_language",
+        "skystreamer_bsky_posts_by_language_grouped",
         "Number of posts from bsky.network by language",
+        &["language"]
+    )?;
+
+    let language_counter_individual = prometheus_exporter::prometheus::register_int_counter_vec!(
+        "skystreamer_bsky_posts_by_language",
+        "Number of posts from bsky.network by language (individually)",
         &["language"]
     )?;
 
@@ -68,6 +74,10 @@ async fn main() -> Result<()> {
 
             let langs = post.language.join(",");
             language_counter.with_label_values(&[&langs]).inc();
+
+            post.language.iter().for_each(|lang| {
+                language_counter_individual.with_label_values(&[lang]).inc();
+            });
 
             if let Some(max_size) = max_sample_size {
                 if counter.get() > max_size as u64 {
