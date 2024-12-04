@@ -124,7 +124,7 @@ const FETCH_DATA_ENVAR: &str = "_FETCH_USER_DATA";
 ///
 /// Disabling this will prevent the exporter from fetching data of every user in the stream,
 /// which is computationally expensive and not necessary for most use cases.
-/// 
+///
 /// This is enabled by default, see `[SurrealDbConn.fetch_user_data]` for more information.
 pub(crate) fn will_fetch_user_data() -> bool {
     std::env::var(FETCH_DATA_ENVAR)
