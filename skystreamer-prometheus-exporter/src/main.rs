@@ -1,10 +1,11 @@
 use color_eyre::Result;
 use futures::StreamExt;
+use prometheus_exporter::prometheus::register_int_counter_vec;
 use prometheus_exporter::{self, prometheus::register_int_counter};
 use skystreamer::{stream::PostStream, RepoSubscription};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
-
+use url::Url;
 fn default_level_filter() -> LevelFilter {
     #[cfg(debug_assertions)]
     return LevelFilter::DEBUG;
@@ -41,6 +42,22 @@ fn handle_language(lang: &str) -> Option<String> {
     Some(primary.to_string())
 }
 
+fn get_post_media(post: &skystreamer::types::Post) -> Vec<skystreamer::types::Media> {
+    let mut media = vec![];
+    if let Some(embed) = post.embed.as_ref() {
+        match embed {
+            skystreamer::types::Embed::RecordWithMedia(_, m) => {
+                media.extend(m.iter().cloned());
+            }
+            skystreamer::types::Embed::Media(m) => {
+                media.extend(m.iter().cloned());
+            }
+            _ => {}
+        }
+    }
+    media
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let env_filter = EnvFilter::builder()
@@ -72,21 +89,63 @@ async fn main() -> Result<()> {
 
     let binding = "0.0.0.0:9100".parse()?;
     let _exporter = prometheus_exporter::start(binding)?;
-    let counter = register_int_counter!(
+    let primary_counter = register_int_counter!(
         "skystreamer_bsky_posts",
         "Number of posts from bsky.network"
     )?;
 
-    let language_counter = prometheus_exporter::prometheus::register_int_counter_vec!(
+    let language_counter = register_int_counter_vec!(
         "skystreamer_bsky_posts_by_language_grouped",
         "Number of posts from bsky.network by language",
         &["language"]
     )?;
 
-    let language_counter_individual = prometheus_exporter::prometheus::register_int_counter_vec!(
+    let language_counter_individual = register_int_counter_vec!(
         "skystreamer_bsky_posts_by_language",
         "Number of posts from bsky.network by language (individually)",
         &["language"]
+    )?;
+
+    let label_counter = register_int_counter_vec!(
+        "skystreamer_bsky_posts_by_label",
+        "Number of posts from bsky.network by label",
+        &["post_label"]
+    )?;
+
+    let tags_counter = register_int_counter_vec!(
+        "skystreamer_bsky_posts_by_tag",
+        "Number of posts from bsky.network by tag",
+        &["post_tag"]
+    )?;
+
+    let quote_counter = register_int_counter_vec!(
+        "skystreamer_bsky_posts_by_quote",
+        "Number of quote posts from bsky.network",
+        &["quote"]
+    )?;
+
+    let reply_counter = register_int_counter_vec!(
+        "skystreamer_bsky_posts_by_reply",
+        "Number of reply posts from bsky.network",
+        &["reply"]
+    )?;
+
+    let alt_text_counter = register_int_counter_vec!(
+        "skystreamer_bsky_posts_by_alt_text",
+        "Number of posts from bsky.network by whether they have alt text",
+        &["alt_text"]
+    )?;
+
+    let media_posts_counter = register_int_counter_vec!(
+        "skystreamer_bsky_posts_by_media",
+        "Number of posts from bsky.network by whether they have media, labeled by type of media they have",
+        &["media"]
+    )?;
+
+    let posts_external_links = register_int_counter_vec!(
+        "skystreamer_bsky_posts_external_links",
+        "Number of posts from bsky.network that have external links by domain",
+        &["domain"]
     )?;
 
     // const MAX_SAMPLE_SIZE: usize = 10000;
@@ -104,62 +163,138 @@ async fn main() -> Result<()> {
         // let mut last_tick = tokio::time::Instant::now();
 
         while let Some(post) = stream.next().await {
-            counter.inc();
+            // Total number of posts
+            primary_counter.inc();
+            {
+                // Count the number of posts by label
+                for label in post.labels.iter() {
+                    label_counter.with_label_values(&[label]).inc();
+                }
 
-            // post.language_raw.iter().for_each(|lang| {
-            //     // Let's normalize all the languages to its main language
-            //     let binding = lang.as_ref();
-            //     let a = binding.language();
-            //     tracing::info!("lang: {:?}", a);
+                // Count the number of posts by tag
+                for tag in post.tags.iter() {
+                    tags_counter.with_label_values(&[tag]).inc();
+                }
+            }
 
-            //     // let lang_norm = handle_language(lang).unwrap_or_else(|| lang.to_lowercase());
-            //     // language_counter_individual
-            //     //     .with_label_values(&[&lang_norm])
-            //     //     .inc();
-            // });
+            // Quote Posts
+            {
+                let is_quote = if let Some(embed) = post.embed.as_ref() {
+                    matches!(
+                        embed,
+                        skystreamer::types::Embed::Record(_)
+                            | skystreamer::types::Embed::RecordWithMedia(_, _)
+                    )
+                } else {
+                    false
+                };
 
-            let langs = post
-                .language
-                .iter()
-                .map(|lang| {
-                    // Let's normalize all the languages to its main language
+                if is_quote {
+                    quote_counter.with_label_values(&["true"]).inc();
+                }
+            }
+            // End Quote Posts
 
-                    // let lang_norm = handle_language(lang).unwrap_or_else(|| lang.to_lowercase());
-                    let processed_language = if lang.is_empty() {
-                        "null".to_string()
-                    } else if normalize_langs.unwrap_or(true) {
-                        let l = handle_language(lang);
-                        if l.is_none() {
-                            tracing::warn!("Failed to normalize language: {}", lang);
-                        }
-                        l.unwrap_or_else(|| lang.to_lowercase())
-                    } else {
-                        lang.to_string()
+            // Posts with media that have alt text
+            {
+                let has_alt_text = get_post_media(&post).iter().any(|media| match media {
+                    skystreamer::types::Media::Image(i) => !i.alt.is_empty(),
+                    skystreamer::types::Media::Video(v) => v.alt.is_some(),
+                });
+
+                if has_alt_text {
+                    alt_text_counter.with_label_values(&["true"]).inc();
+                };
+            }
+            {
+                // Posts that are replies to other posts
+                let is_reply = post.reply.is_some();
+
+                if is_reply {
+                    reply_counter.with_label_values(&["reply"]).inc();
+                }
+            }
+
+            {
+                // Posts with media by type
+                let post_media = get_post_media(&post);
+                if !post_media.is_empty() {
+                    // get the first media type, because images and videos are mutually exclusive
+                    let media_type = match post_media.first().unwrap() {
+                        skystreamer::types::Media::Image(_) => "image",
+                        skystreamer::types::Media::Video(_) => "video",
                     };
+                    media_posts_counter.with_label_values(&[media_type]).inc();
+                }
+            }
 
-                    language_counter_individual
-                        .with_label_values(&[&processed_language])
-                        .inc();
+            // Posts by external media's domain name
+            {
+                let external_link = post.embed.and_then(|embed| match embed {
+                    skystreamer::types::Embed::External(e) => Some(Url::parse(&e.uri)),
+                    _ => None,
+                });
 
-                    processed_language
-                })
-                .collect::<Vec<_>>();
+                // get domain
+                let domain_name = external_link.and_then(|link| link.ok()).and_then(|url| {
+                    url.domain().map(|domain| {
+                        domain
+                            .strip_prefix("www.")
+                            .unwrap_or(domain)
+                            .to_string()
+                            .to_lowercase()
+                    })
+                });
 
-            langs.iter().for_each(|lang| {
-                language_counter_individual.with_label_values(&[lang]).inc();
-            });
+                if let Some(domain) = domain_name {
+                    posts_external_links.with_label_values(&[&domain]).inc();
+                }
+            }
 
-            let langs_joined = if langs.is_empty() {
-                "null".to_string()
-            } else {
-                langs.join(",")
-            };
-            language_counter.with_label_values(&[&langs_joined]).inc();
-            // handle for grouped languages
+            {
+                // Languages of the posts
+                let langs = post
+                    .language
+                    .iter()
+                    .map(|lang| {
+                        // Let's normalize all the languages to its main language
 
-            if let Some(max_size) = max_sample_size {
-                if counter.get() > max_size as u64 {
-                    counter.reset();
+                        let processed_language = if lang.is_empty() {
+                            "null".to_string()
+                        } else if normalize_langs.unwrap_or(true) {
+                            let l = handle_language(lang);
+                            if l.is_none() {
+                                tracing::warn!("Failed to normalize language: {}", lang);
+                            }
+                            l.unwrap_or_else(|| lang.to_lowercase())
+                        } else {
+                            lang.to_string()
+                        };
+
+                        language_counter_individual
+                            .with_label_values(&[&processed_language])
+                            .inc();
+
+                        processed_language
+                    })
+                    .collect::<Vec<_>>();
+
+                langs.iter().for_each(|lang| {
+                    language_counter_individual.with_label_values(&[lang]).inc();
+                });
+
+                let langs_joined = if langs.is_empty() {
+                    "null".to_string()
+                } else {
+                    langs.join(",")
+                };
+                language_counter.with_label_values(&[&langs_joined]).inc();
+                // handle for grouped languages
+
+                if let Some(max_size) = max_sample_size {
+                    if primary_counter.get() > max_size as u64 {
+                        primary_counter.reset();
+                    }
                 }
             }
         }
