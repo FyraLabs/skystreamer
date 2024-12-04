@@ -58,12 +58,11 @@ async fn main() -> Result<()> {
         // let mut last_tick = tokio::time::Instant::now();
 
         while let Some(_post) = stream.next().await {
+            counter.inc();
+
             if counter.get() > max_sample_size as f64 {
                 counter.reset();
             }
-
-            counter.inc();
-            // println!("Rate: {}", counter.get());
         }
     }
 
