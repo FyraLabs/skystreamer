@@ -84,7 +84,7 @@ pub struct SurrealDbConn {
         short = 'u',
         long,
         required_if_eq_any([("auth_type", "Root"), ("auth_type", "Namespace")]),
-        env = "SURREAL_USERNAME",
+        env = "SURREAL_USER",
         // group = "surrealdb"
     )]
     pub username: Option<String>,
@@ -95,7 +95,7 @@ pub struct SurrealDbConn {
         short = 'p',
         long,
         required_if_eq_any([("auth_type", "Root"), ("auth_type", "Namespace")]),
-        env = "SURREAL_PASSWORD",
+        env = "SURREAL_PASS",
         // group = "surrealdb"
     )]
     pub password: Option<String>,
