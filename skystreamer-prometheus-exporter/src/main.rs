@@ -30,11 +30,11 @@ async fn main() -> Result<()> {
         .init();
 
     let max_sample_size = std::env::var("MAX_SAMPLE_SIZE")
-        .unwrap_or_else(|_| "10000".to_string())
-        .parse::<usize>()?;
+        .map(|val| val.parse::<usize>().unwrap_or(10000))
+        .ok();
 
     tracing::info!("Starting skystreamer-prometheus-exporter");
-    tracing::info!("MAX_SAMPLE_SIZE: {}", max_sample_size);
+    tracing::info!("MAX_SAMPLE_SIZE: {:?}", max_sample_size);
 
     let binding = "0.0.0.0:9100".parse()?;
     let _exporter = prometheus_exporter::start(binding)?;
@@ -69,8 +69,10 @@ async fn main() -> Result<()> {
             let langs = post.language.join(",");
             language_counter.with_label_values(&[&langs]).inc();
 
-            if counter.get() > max_sample_size as u64 {
-                counter.reset();
+            if let Some(max_size) = max_sample_size {
+                if counter.get() > max_size as u64 {
+                    counter.reset();
+                }
             }
         }
     }
