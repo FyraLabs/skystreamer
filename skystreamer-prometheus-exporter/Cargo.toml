@@ -1,0 +1,14 @@
+[package]
+name = "skystreamer-prometheus-exporter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+skystreamer = { path = "../skystreamer" }
+color-eyre = "0.6.3"
+prometheus_exporter = "0.8.5"
+tokio = { version = "1.42.0", features = ["full"] }
+tokio-stream = { version = "0.1.16", features = ["full"] }
+tracing = { version = "0.1.41", features = ["log"] }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+futures = "0.3.31"
