@@ -50,7 +50,7 @@ See `skystreamer --help` for more information.
 
 ### As a library
 
-Please see the `skystreamer/examples` directory for examples on how to use SkyStreamer as a library.
+Please see the [`skystreamer/examples`](./skystreamer/examples/) directory for examples on how to use SkyStreamer as a library.
 
 ### Prometheus Exporter
 
