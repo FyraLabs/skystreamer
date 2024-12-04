@@ -5,6 +5,7 @@ use atrium_api::{
 };
 use atrium_xrpc_client::reqwest::ReqwestClient;
 use chrono::NaiveDateTime;
+use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
 use ipld_core::ipld::Ipld;
 use skystreamer::types::Post as SPost;
@@ -86,6 +87,17 @@ impl XrpcQuerier {
     // }
 
     pub async fn get_profile(&self, did: Did) -> Result<User> {
+        // perform garbage collection on the cache
+        // only retain entries that are not expired
+        {
+            let cache = PROFILE_CACHE.with(|pc| pc.cache.clone());
+            let mut cache = cache.write().await;
+            cache.retain(|_, (time, _)| {
+                let now = chrono::Utc::now().naive_utc();
+                now.signed_duration_since(*time).num_hours() < 4
+            });
+        }
+
         let permit = self.semaphore.acquire().await?;
 
         let did_str = did.to_string();
@@ -201,43 +213,15 @@ async fn create_relations<C: Connection>(
     //     .to_string();
 
     // Create dummy table entry for user if it doesn't exist
-    tracing::debug_span!("create_empty_user_profile", ?post_author).in_scope(|| {
-        let db_clone = db.clone();
-        let post_author_clone = post_author.clone();
-        tokio::spawn(async move {
-            if let Err(e) = async {
-                let _: Option<User> = db_clone
-                    .upsert((USERS_TABLE, &post_author_clone))
-                    .content(User::default())
-                    .await?;
-                Ok::<_, color_eyre::Report>(())
-            }
-            .await
-            {
-                tracing::error!("Failed to create empty user profile: {:?}", e);
-            }
-        });
-    });
-    // Fetch user profile if needed
-    tracing::debug_span!("user_fetch", ?post_did).in_scope(|| {
-        if will_fetch_user_data() {
-            let db = db.clone();
-            tokio::spawn(async move {
-                let actor = XrpcQuerier::get().get_profile(post_did).await.ok();
-                if let Err(e) = async {
-                    let _: Option<User> = db
-                        .upsert((USERS_TABLE, &post_author))
-                        .content(actor.clone().unwrap_or_default())
-                        .await?;
-                    Ok::<_, color_eyre::Report>(())
-                }
-                .await
-                {
-                    tracing::error!("Failed to create user profile: {:?}", e);
-                }
-            });
-        }
-    });
+    let db_clone = db.clone();
+    let post_author_clone = post_author.clone();
+    // tokio::task::spawn_blocking(|| async move {
+    let user: Option<User> = db_clone
+        .upsert((USERS_TABLE, &post_author_clone))
+        .content(User::default())
+        .await?;
+
+    let user = user.ok_or_eyre("Failed to create user")?;
 
     if let Err(e) = async {
         let post = post.clone();
@@ -268,7 +252,7 @@ async fn create_relations<C: Connection>(
         }
 
         let res = query
-            .bind(("user", post.author))
+            .bind(("user", user.id))
             .bind(("post", post.id))
             .query("COMMIT;")
             .await?
@@ -285,6 +269,18 @@ async fn create_relations<C: Connection>(
     } else {
         tracing::debug!(?post, "Created relations for post");
     }
+    tokio::spawn(async move {
+        if will_fetch_user_data() {
+            // let _user = user.ok_or_else(|| color_eyre::eyre::eyre!("Failed to create user"))?;
+            let actor = XrpcQuerier::get().get_profile(post_did).await.ok();
+            let _: Option<User> = db_clone
+                .upsert((USERS_TABLE, &post_author_clone))
+                .content(actor.unwrap_or_default())
+                .await?;
+            // return Ok(user);
+        }
+        Ok::<_, color_eyre::Report>(())
+    });
 
     Ok(())
 }

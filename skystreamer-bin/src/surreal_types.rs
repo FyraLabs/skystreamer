@@ -196,7 +196,12 @@ impl From<skystreamer::types::Post> for SurrealPostRep {
         // tracing::info!("Time: {:?}", post.created_at);
         // check if time is some reason in the future
         if created_at_local > now + chrono::Duration::minutes(30) {
-            tracing::warn!("Post created_at is in the future!?: {:?}", created_at);
+            let relative_duration = created_at_local - now;
+            tracing::warn!(
+                "Post created_at is {} in the future!?: {:?}",
+                relative_duration,
+                post.created_at
+            );
         }
         SurrealPostRep {
             author: RecordId::from_table_key(
