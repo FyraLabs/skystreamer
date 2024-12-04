@@ -1,0 +1,11 @@
+name: Docker
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  docker:
+    uses: FyraLabs/actions/.github/workflows/docker.yml@main
+    with:
+      publish: true
