@@ -1,6 +1,6 @@
 use color_eyre::Result;
 use futures::StreamExt;
-use prometheus_exporter::{self, prometheus::register_counter};
+use prometheus_exporter::{self, prometheus::register_int_counter};
 use skystreamer::{stream::PostStream, RepoSubscription};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -38,9 +38,15 @@ async fn main() -> Result<()> {
 
     let binding = "0.0.0.0:9100".parse()?;
     let _exporter = prometheus_exporter::start(binding)?;
-    let counter = register_counter!(
+    let counter = register_int_counter!(
         "skystreamer_bsky_posts",
         "Number of posts from bsky.network"
+    )?;
+
+    let language_counter = prometheus_exporter::prometheus::register_int_counter_vec!(
+        "skystreamer_bsky_posts_by_language",
+        "Number of posts from bsky.network by language",
+        &["language"]
     )?;
 
     // const MAX_SAMPLE_SIZE: usize = 10000;
@@ -57,10 +63,13 @@ async fn main() -> Result<()> {
 
         // let mut last_tick = tokio::time::Instant::now();
 
-        while let Some(_post) = stream.next().await {
+        while let Some(post) = stream.next().await {
             counter.inc();
 
-            if counter.get() > max_sample_size as f64 {
+            let langs = post.language.join(",");
+            language_counter.with_label_values(&[&langs]).inc();
+
+            if counter.get() > max_sample_size as u64 {
                 counter.reset();
             }
         }
