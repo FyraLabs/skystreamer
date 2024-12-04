@@ -12,3 +12,5 @@ tokio-stream = { version = "0.1.16", features = ["full"] }
 tracing = { version = "0.1.41", features = ["log"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 futures = "0.3.31"
+tracing-test = "0.2.5"
+langtag = "0.4.0"

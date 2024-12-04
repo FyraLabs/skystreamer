@@ -186,7 +186,12 @@ pub struct Config {
     #[clap(flatten)]
     pub file_exporter: FileExporterOptions,
 
-    #[clap(short = 'R', long, default_value = "bsky.network", env = "ATPROTO_RELAY")]
+    #[clap(
+        short = 'R',
+        long,
+        default_value = "bsky.network",
+        env = "ATPROTO_RELAY"
+    )]
     pub atproto_relay: String,
 }
 
