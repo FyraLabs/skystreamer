@@ -8,6 +8,14 @@ BEGIN;
 -- USERS
 DEFINE TABLE IF NOT EXISTS user TYPE NORMAL SCHEMALESS PERMISSIONS NONE;
 
+-- ------------------------------
+-- PRECOMPUTED VIEWS
+-- ------------------------------
+DEFINE TABLE IF NOT EXISTS user_count_total AS
+SELECT count() AS user_count
+FROM user GROUP ALL;
+
+
 
 -- END USERS
 -- ------------------------------
@@ -49,6 +57,9 @@ SELECT count() AS post_count,
     author as author
 FROM post GROUP BY author;
 
+DEFINE TABLE IF NOT EXISTS post_count_total AS
+SELECT count() AS post_count
+FROM post GROUP ALL;
 
 
 -- END POSTS
