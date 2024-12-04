@@ -185,6 +185,9 @@ pub struct Config {
     pub exporter: ExporterType,
     #[clap(flatten)]
     pub file_exporter: FileExporterOptions,
+
+    #[clap(short = 'R', long, default_value = "bsky.network", env = "ATPROTO_RELAY")]
+    pub atproto_relay: String,
 }
 
 impl Config {
@@ -212,6 +215,6 @@ impl Config {
             }
         };
 
-        Ok(Consumer::new(exporter))
+        Ok(Consumer::new(exporter, &self.atproto_relay))
     }
 }

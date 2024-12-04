@@ -15,6 +15,7 @@ use update_rate::RateCounter;
 pub struct Consumer {
     rate_counter: update_rate::DiscreteRateCounter,
     exporter: Box<dyn exporter::Exporter>,
+    pub atproto_relay: String,
 }
 // #[derive(Debug)]
 // pub struct TaskQueue {
@@ -67,15 +68,16 @@ pub struct Consumer {
 // const GLOBAL_THREAD_POOL: OnceCell<ThreadPool> = OnceCell::new();
 
 impl Consumer {
-    pub fn new(exporter: Box<dyn exporter::Exporter>) -> Self {
+    pub fn new(exporter: Box<dyn exporter::Exporter>, relay: &str) -> Self {
         Consumer {
             rate_counter: update_rate::DiscreteRateCounter::new(50),
             exporter,
+            atproto_relay: relay.to_string(),
         }
     }
 
     pub async fn start(&mut self) -> Result<()> {
-        let subscription = RepoSubscription::new("bsky.network").await.unwrap();
+        let subscription = RepoSubscription::new(&self.atproto_relay).await.unwrap();
         let post_stream = PostStream::new(subscription);
 
         let mut post_stream = post_stream.await;
