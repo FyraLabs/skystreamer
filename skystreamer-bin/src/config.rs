@@ -54,7 +54,7 @@ pub struct SurrealDbConn {
         required_if_eq("exporter", "surrealdb"),
         default_value = "ws://localhost:8000",
         env = "SURREAL_ENDPOINT",
-        group = "surrealdb"
+        // group = "surrealdb"
     )]
     pub surreal_endpoint: String,
 
@@ -64,7 +64,7 @@ pub struct SurrealDbConn {
         long,
         // default_value = "none",
         env = "SURREAL_AUTH_TYPE",
-        group = "surrealdb"
+        // group = "surrealdb"
     )]
     pub auth_type: Option<SurrealAuthType>,
 
@@ -112,6 +112,24 @@ pub struct SurrealDbConn {
     /// Database to use in SurrealDB
     #[clap(short = 'd', long, default_value = "bsky", env = "SURREAL_DATABASE")]
     pub database: String,
+
+    /// Fetch user data from ATProto
+    #[clap(short = 'f', long, env = "FETCH_USER_DATA", default_value = "true")]
+    pub fetch_user_data: bool,
+}
+
+const FETCH_DATA_ENVAR: &str = "_FETCH_USER_DATA";
+
+/// HACK: Set internal envar for fetching user data when using SurrealDB exporter
+///
+/// Disabling this will prevent the exporter from fetching data of every user in the stream,
+/// which is computationally expensive and not necessary for most use cases.
+/// 
+/// This is enabled by default, see `[SurrealDbConn.fetch_user_data]` for more information.
+pub(crate) fn will_fetch_user_data() -> bool {
+    std::env::var(FETCH_DATA_ENVAR)
+        .map(|v| v == "true")
+        .unwrap_or(false)
 }
 
 impl SurrealDbConn {
@@ -141,6 +159,11 @@ impl SurrealDbConn {
             }
             _ => {}
         }
+
+        if self.fetch_user_data {
+            std::env::set_var(FETCH_DATA_ENVAR, "true");
+        }
+
         conn.use_ns(&self.namespace).use_db(&self.database).await?;
 
         // run schema

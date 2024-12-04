@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 // use crate::{types::{Blob, ExternalLink, Media, PostData}};
 use atrium_api::{app::bsky::actor::defs::ProfileViewDetailedData, types::string::Did};
 use serde::{Deserialize, Serialize};
@@ -74,8 +76,8 @@ fn parse_bsky_img_url(url: Url) -> Blob {
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct User {
     /// DID of the user
-    #[serde(skip)]
-    pub did: Option<Did>,
+    // #[serde(skip)]
+    pub did_raw: Option<Did>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<Thing>,
 
@@ -106,7 +108,7 @@ pub struct User {
 impl From<ProfileViewDetailedData> for User {
     fn from(profile: ProfileViewDetailedData) -> Self {
         User {
-            did: Some(profile.did.clone()),
+            did_raw: Some(profile.did.clone()),
             id: None,
             display_name: profile.display_name.clone(),
             handle: profile.handle.to_string(),
@@ -171,6 +173,13 @@ pub struct SurrealPostRep {
     /// Labels associated with post
     pub labels: Vec<String>,
     pub embed: Option<Embed>,
+}
+
+impl SurrealPostRep {
+    pub fn get_author_did(&self) -> color_eyre::Result<Did> {
+        Did::from_str(&format!("did:plc:{}", self.author.key()))
+            .map_err(|e| color_eyre::eyre::eyre!(e))
+    }
 }
 
 impl From<skystreamer::types::Post> for SurrealPostRep {

@@ -3,60 +3,66 @@
 mod config;
 mod exporter;
 mod surreal_types;
-use std::sync::Arc;
-
+use clap::Parser;
+use color_eyre::Result;
 use futures::StreamExt;
+use skystreamer::{stream::PostStream, RepoSubscription};
+// use std::sync::Arc;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::EnvFilter;
+use update_rate::RateCounter;
+
 pub struct Consumer {
     rate_counter: update_rate::DiscreteRateCounter,
     exporter: Box<dyn exporter::Exporter>,
 }
-#[derive(Debug)]
-pub struct TaskQueue {
-    workers: Vec<tokio::task::JoinHandle<()>>,
-    semaphore: Arc<tokio::sync::Semaphore>,
-}
+// #[derive(Debug)]
+// pub struct TaskQueue {
+//     workers: Vec<tokio::task::JoinHandle<()>>,
+//     semaphore: Arc<tokio::sync::Semaphore>,
+// }
 
-impl TaskQueue {
-    pub fn new() -> Self {
-        TaskQueue {
-            workers: Vec::new(),
-            semaphore: Arc::new(tokio::sync::Semaphore::new(16)),
-        }
-    }
+// impl TaskQueue {
+//     pub fn new() -> Self {
+//         TaskQueue {
+//             workers: Vec::new(),
+//             semaphore: Arc::new(tokio::sync::Semaphore::new(16)),
+//         }
+//     }
 
-    /// Add a new task on the queue from a tokio join handle
-    /// Remove the task from the queue when it finishes
-    pub fn add_task(&mut self, task: tokio::task::JoinHandle<()>) {
-        self.workers.retain(|worker| !worker.is_finished());
-        // tracing::info!("Running workers: {}", self.workers.len());
-        let semaphore = self.semaphore.clone();
-        let worker = tokio::spawn(async move {
-            let _permit = semaphore.acquire().await;
-            tracing::info!("Available permits: {}", semaphore.available_permits());
-            tokio::join!(task).0.unwrap();
-            // release permit when task is done
-        });
-        self.workers.push(worker);
-    }
+//     /// Add a new task on the queue from a tokio join handle
+//     /// Remove the task from the queue when it finishes
+//     pub fn add_task(&mut self, task: tokio::task::JoinHandle<()>) {
+//         self.workers.retain(|worker| !worker.is_finished());
+//         // tracing::info!("Running workers: {}", self.workers.len());
+//         let semaphore = self.semaphore.clone();
+//         let worker = tokio::spawn(async move {
+//             let _permit = semaphore.acquire().await;
+//             tracing::info!("Available permits: {}", semaphore.available_permits());
+//             tokio::join!(task).0.unwrap();
+//             // release permit when task is done
+//         });
+//         self.workers.push(worker);
+//     }
 
-    pub fn handle_interrupt(&mut self) {
-        for worker in self.workers.drain(..) {
-            self.semaphore.clone().close();
-            tracing::info!("Cancelling workers");
-            worker.abort();
-        }
-    }
-}
+//     pub fn handle_interrupt(&mut self) {
+//         for worker in self.workers.drain(..) {
+//             self.semaphore.clone().close();
+//             tracing::info!("Cancelling workers");
+//             worker.abort();
+//         }
+//     }
+// }
 
-impl Default for TaskQueue {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// impl Default for TaskQueue {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
 
-thread_local! {
-    static LOCAL_THREAD_POOL: std::cell::RefCell<TaskQueue> = std::cell::RefCell::new(TaskQueue::new());
-}
+// thread_local! {
+//     static LOCAL_THREAD_POOL: std::cell::RefCell<TaskQueue> = std::cell::RefCell::new(TaskQueue::new());
+// }
 
 // const GLOBAL_THREAD_POOL: OnceCell<ThreadPool> = OnceCell::new();
 
@@ -207,16 +213,25 @@ impl Consumer {
 //         }
 //     }
 // }
-use clap::Parser;
-use color_eyre::Result;
-use skystreamer::{stream::PostStream, RepoSubscription};
 
-use update_rate::RateCounter;
+fn default_level_filter() -> LevelFilter {
+    #[cfg(debug_assertions)]
+    return LevelFilter::DEBUG;
+    #[cfg(not(debug_assertions))]
+    return LevelFilter::INFO;
+}
+
 // use skystreamer::RepoSubscription;
 // #![feature(cli)]
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
+
+    // let default_levelfilter =
+
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(default_level_filter().into())
+        .from_env()?;
 
     tracing_subscriber::fmt()
         .with_target(false)
@@ -225,7 +240,7 @@ async fn main() -> Result<()> {
         .with_file(false)
         .compact()
         .with_line_number(false)
-        .with_env_filter("info")
+        .with_env_filter(env_filter)
         .init();
 
     // start consumer
@@ -241,13 +256,13 @@ async fn main() -> Result<()> {
     let config = crate::config::Config::parse();
     let mut consumer = config.consumer().await?;
 
-    ctrlc::set_handler(move || {
-        LOCAL_THREAD_POOL.with(|pool| {
-            pool.borrow_mut().handle_interrupt();
-        });
-        std::process::exit(0);
-    })
-    .expect("Error setting Ctrl-C handler");
+    // ctrlc::set_handler(move || {
+    //     LOCAL_THREAD_POOL.with(|pool| {
+    //         pool.borrow_mut().handle_interrupt();
+    //     });
+    //     std::process::exit(0);
+    // })
+    // .expect("Error setting Ctrl-C handler");
 
     consumer.start().await?;
 
