@@ -177,12 +177,14 @@ pub trait Exporter {
 }
 
 pub struct SurrealDbExporter<C: Connection> {
-    db: Box<Surreal<C>>,
+    db: Arc<tokio::sync::Mutex<Surreal<C>>>,
 }
 
 impl<C: Connection> SurrealDbExporter<C> {
     pub fn new(db: Surreal<C>) -> Self {
-        SurrealDbExporter { db: Box::new(db) }
+        SurrealDbExporter {
+            db: Arc::new(tokio::sync::Mutex::new(db)),
+        }
     }
 }
 
@@ -295,6 +297,9 @@ impl<C: Connection> Exporter for SurrealDbExporter<C> {
         let db = self.db.clone();
         let post = post.clone();
         tokio::spawn(async move {
+            // note: Locking the database here for some reason fixes
+            // timing issues with the database
+            let db = db.lock().await;
             let post_rep: crate::surreal_types::SurrealPostRep = post.clone().into();
             let res: Option<crate::surreal_types::SurrealPostRep> = db
                 .upsert((POSTS_TABLE, &post.id.to_string()))
