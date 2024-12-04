@@ -195,7 +195,7 @@ impl From<skystreamer::types::Post> for SurrealPostRep {
         let created_at_local = created_at.with_timezone(&now_tz);
         // tracing::info!("Time: {:?}", post.created_at);
         // check if time is some reason in the future
-        if created_at_local > now {
+        if created_at_local > now + chrono::Duration::minutes(30) {
             tracing::warn!("Post created_at is in the future!?: {:?}", created_at);
         }
         SurrealPostRep {
