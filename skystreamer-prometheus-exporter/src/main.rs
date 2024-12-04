@@ -29,6 +29,13 @@ async fn main() -> Result<()> {
         .with_env_filter(env_filter)
         .init();
 
+    let max_sample_size = std::env::var("MAX_SAMPLE_SIZE")
+        .unwrap_or_else(|_| "10000".to_string())
+        .parse::<usize>()?;
+
+    tracing::info!("Starting skystreamer-prometheus-exporter");
+    tracing::info!("MAX_SAMPLE_SIZE: {}", max_sample_size);
+
     let binding = "0.0.0.0:9100".parse()?;
     let _exporter = prometheus_exporter::start(binding)?;
     let counter = register_counter!(
@@ -36,7 +43,7 @@ async fn main() -> Result<()> {
         "Number of posts from bsky.network"
     )?;
 
-    const MAX_SAMPLE_SIZE: usize = 10000;
+    // const MAX_SAMPLE_SIZE: usize = 10000;
 
     loop {
         let subscription = RepoSubscription::new("bsky.network").await.unwrap();
@@ -51,7 +58,7 @@ async fn main() -> Result<()> {
         // let mut last_tick = tokio::time::Instant::now();
 
         while let Some(_post) = stream.next().await {
-            if counter.get() > MAX_SAMPLE_SIZE as f64 {
+            if counter.get() > max_sample_size as f64 {
                 counter.reset();
             }
 
