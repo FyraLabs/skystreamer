@@ -294,20 +294,57 @@ impl<C: Connection> Exporter for SurrealDbExporter<C> {
     async fn export(&mut self, post: &SPost) -> Result<()> {
         let db = self.db.clone();
         let post = post.clone();
+        // we will retry 50 times because TiKV (and even RocksDB backend) can be flaky
+        // and overloads can cause the request to fail
+        const MAX_ATTEMPTS: u8 = 50;
         tokio::spawn(async move {
-            let post_rep: crate::surreal_types::SurrealPostRep = post.clone().into();
-            let res: Option<crate::surreal_types::SurrealPostRep> = db
-                .upsert((POSTS_TABLE, &post.id.to_string()))
-                .content(post_rep)
-                .await
-                .map_err(|e| color_eyre::Report::new(e))?;
+            if let Err(e) = async move {
+                // 3 attempts to retry, sleep 500ms between each attempt
+                let post_rep: crate::surreal_types::SurrealPostRep = post.clone().into();
+                let mut attempts = 0;
 
-            create_relations(
-                &db,
-                &res.ok_or_else(|| color_eyre::eyre::eyre!("Post not found!"))?,
-            )
-            .await?;
-            Ok::<_, color_eyre::Report>(())
+                while attempts < MAX_ATTEMPTS {
+                    match async {
+                        let res: Option<crate::surreal_types::SurrealPostRep> = db
+                            .upsert((POSTS_TABLE, &post.id.to_string()))
+                            .content(post_rep.clone())
+                            .await
+                            .map_err(|e| color_eyre::Report::new(e))?;
+
+                        let post =
+                            res.ok_or_else(|| color_eyre::eyre::eyre!("Failed to create post"))?;
+                        create_relations(&db, &post).await?;
+                        Ok::<_, color_eyre::Report>(())
+                    }
+                    .await
+                    {
+                        Ok(_) => break,
+                        Err(e) => {
+                            tracing::debug!("Attempt {} failed: {:?}", attempts + 1, e);
+                            attempts += 1;
+                            tokio::time::sleep(std::time::Duration::from_secs_f64(1.0)).await;
+                        }
+                    }
+                }
+                Ok::<_, color_eyre::Report>(())
+            }
+            .await
+            {
+                tracing::error!("Failed to export post after all retries: {:?}", e);
+            }
+            // let post_rep: crate::surreal_types::SurrealPostRep = post.clone().into();
+            // let res: Option<crate::surreal_types::SurrealPostRep> = db
+            //     .upsert((POSTS_TABLE, &post.id.to_string()))
+            //     .content(post_rep)
+            //     .await
+            //     .map_err(|e| color_eyre::Report::new(e))?;
+
+            // create_relations(
+            //     &db,
+            //     &res.ok_or_else(|| color_eyre::eyre::eyre!("Post not found!"))?,
+            // )
+            // .await?;
+            // Ok::<_, color_eyre::Report>(())
         });
         Ok(())
     }
