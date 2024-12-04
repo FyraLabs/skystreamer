@@ -18,7 +18,7 @@ fn handle_language(lang: &str) -> Option<String> {
     // for some reason, langtag::Language::new("jp") is still a valid language
     // shouldn't it be converted to "ja"?
     // wtf?
-    let special_cases = [/* ("jp", "ja"), */ ("angika", "anp")];
+    let special_cases = [("jp", "ja"), ("angika", "anp")];
     let lang = special_cases
         .iter()
         .find_map(|(from, to)| {
