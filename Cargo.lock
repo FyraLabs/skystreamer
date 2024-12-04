@@ -4193,12 +4193,10 @@ checksum = "38b58827f4464d87d377d175e90bf58eb00fd8716ff0a62f80356b5e61555d0d"
 name = "skystreamer"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "atrium-api",
  "chrono",
  "cid 0.10.1",
  "cid 0.11.1",
- "clap 4.5.21",
  "futures",
  "ipld-core",
  "rs-car",
@@ -4207,7 +4205,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.3",
  "tokio",
- "tokio-stream",
  "tokio-tungstenite 0.24.0",
  "tracing",
  "trait-variant",

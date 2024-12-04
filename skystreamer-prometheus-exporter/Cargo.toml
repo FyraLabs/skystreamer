@@ -3,6 +3,13 @@ name = "skystreamer-prometheus-exporter"
 version = "0.1.0"
 edition = "2021"
 
+authors = ["Cappy Ishihara <cappy@fyralabs.com>"]
+description = "Prometheus exporter for SkyStreamer"
+readme = "../README.md"
+license = "MIT"
+repository = "https://github.com/FyraLabs/skystreamer"
+categories = ["data-structures", "visualization"]
+
 [dependencies]
 skystreamer = { path = "../skystreamer" }
 color-eyre = "0.6.3"
