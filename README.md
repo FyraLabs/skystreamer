@@ -52,6 +52,22 @@ See `skystreamer --help` for more information.
 
 Please see the `skystreamer/examples` directory for examples on how to use SkyStreamer as a library.
 
+### Prometheus Exporter
+
+SkyStreamer also has a Prometheus exporter implementation that can be used to show statistics about Bluesky posts as a whole.
+
+See [skystreamer-prometheus-exporter](./skystreamer-prometheus-exporter) for the implentation.
+
+You can also use the Docker image from `ghcr.io/fyralabs/skystreamer-prometheus-exporter:latest` to run the exporter. Configure it like you would
+normally configure Prometheus data sources.
+
+The data itself only includes numbers of posts and various counters per metric, and does not include any actual post data except for external link domains and hashtags.
+
+#### Environment Variables
+
+- `MAX_SAMPLE_SIZE`: Maximum number of posts to count before overflow, default is none (Max `u64`).
+- `NORMALIZE_LANGS`: Attempt to normalize post language codes to their respective [IETF BCP 47](https://www.ietf.org/rfc/bcp/bcp47.html) codes, default is `true`. Set to `false` to export raw codes from the AT firehose.
+
 ## Older implementation
 
 SkyStreamer was originally implemented as a simple Python script. You can find the old implementation in the `legacy` directory.
