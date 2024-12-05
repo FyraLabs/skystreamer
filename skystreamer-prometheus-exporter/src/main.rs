@@ -229,7 +229,7 @@ async fn main() -> Result<()> {
                         {
                             // Posts with media by type
                             let post_media = get_post_media(&post);
-                            if (!post_media.is_empty()) {
+                            if !post_media.is_empty() {
                                 // get the first media type, because images and videos are mutually exclusive
                                 let media_type = match post_media.first().unwrap() {
                                     skystreamer::types::Media::Image(_) => "image",
