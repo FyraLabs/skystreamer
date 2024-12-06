@@ -1,6 +1,6 @@
 // use color_eyre::Result;
-use futures::StreamExt;
-use skystreamer::{stream::PostStream, RepoSubscription};
+use futures::{pin_mut, StreamExt};
+use skystreamer::{stream::EventStream, RepoSubscription};
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -8,18 +8,17 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let subscription = RepoSubscription::new("bsky.network").await.unwrap();
     // let subscription = repo;
 
-    // Wrap in PostStream
-    let post_stream = PostStream::new(subscription);
-    let mut post_stream = post_stream.await;
-    let stream = post_stream.stream().await?;
+    let mut binding = EventStream::new(subscription);
+    let event_stream = binding.stream().await?;
 
-    // Pin the stream before processing
-    futures::pin_mut!(stream);
+    // let commit_stream = subscription.stream_commits().await;
+    pin_mut!(event_stream);
 
-    // Process posts as they arrive
-    // should be Result<Post, Error>
-    while let Some(post) = stream.next().await {
-        println!("{:?}", post);
+    while let Some(record) = event_stream.next().await {
+        // stream unknown record types
+        if let skystreamer::types::commit::Record::Other(val) = record {
+            println!("{:?}", val);
+        }
     }
 
     Ok(())

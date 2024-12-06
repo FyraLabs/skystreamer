@@ -1,4 +1,8 @@
-use atrium_api::{app::bsky, com::atproto::sync::subscribe_repos::RepoOp, types::{CidLink, Collection}};
+use atrium_api::{
+    app::bsky,
+    com::atproto::sync::subscribe_repos::RepoOp,
+    types::{CidLink, Collection},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Operation {

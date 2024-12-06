@@ -9,7 +9,6 @@ use chrono::{DateTime, FixedOffset};
 use cid::Cid;
 use serde::{Deserialize, Serialize};
 
-
 /// An event where someone likes a post
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LikeEvent {

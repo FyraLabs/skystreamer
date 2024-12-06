@@ -17,55 +17,6 @@ pub struct Consumer {
     exporter: Box<dyn exporter::Exporter>,
     pub atproto_relay: String,
 }
-// #[derive(Debug)]
-// pub struct TaskQueue {
-//     workers: Vec<tokio::task::JoinHandle<()>>,
-//     semaphore: Arc<tokio::sync::Semaphore>,
-// }
-
-// impl TaskQueue {
-//     pub fn new() -> Self {
-//         TaskQueue {
-//             workers: Vec::new(),
-//             semaphore: Arc::new(tokio::sync::Semaphore::new(16)),
-//         }
-//     }
-
-//     /// Add a new task on the queue from a tokio join handle
-//     /// Remove the task from the queue when it finishes
-//     pub fn add_task(&mut self, task: tokio::task::JoinHandle<()>) {
-//         self.workers.retain(|worker| !worker.is_finished());
-//         // tracing::info!("Running workers: {}", self.workers.len());
-//         let semaphore = self.semaphore.clone();
-//         let worker = tokio::spawn(async move {
-//             let _permit = semaphore.acquire().await;
-//             tracing::info!("Available permits: {}", semaphore.available_permits());
-//             tokio::join!(task).0.unwrap();
-//             // release permit when task is done
-//         });
-//         self.workers.push(worker);
-//     }
-
-//     pub fn handle_interrupt(&mut self) {
-//         for worker in self.workers.drain(..) {
-//             self.semaphore.clone().close();
-//             tracing::info!("Cancelling workers");
-//             worker.abort();
-//         }
-//     }
-// }
-
-// impl Default for TaskQueue {
-//     fn default() -> Self {
-//         Self::new()
-//     }
-// }
-
-// thread_local! {
-//     static LOCAL_THREAD_POOL: std::cell::RefCell<TaskQueue> = std::cell::RefCell::new(TaskQueue::new());
-// }
-
-// const GLOBAL_THREAD_POOL: OnceCell<ThreadPool> = OnceCell::new();
 
 impl Consumer {
     pub fn new(exporter: Box<dyn exporter::Exporter>, relay: &str) -> Self {

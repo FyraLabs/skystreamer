@@ -1,10 +1,10 @@
 [package]
 name = "skystreamer"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 
 authors = ["Cappy Ishihara <cappy@fyralabs.com>"]
-description = "AT Firehose collector for Bluesky"
+description = "Idiomatic Rust library for the AT Firehose streaming API"
 license = "MIT"
 repository = "https://github.com/FyraLabs/skystreamer"
 categories = [

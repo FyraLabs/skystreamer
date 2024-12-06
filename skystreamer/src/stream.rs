@@ -7,7 +7,10 @@ use crate::types::{commit, Post};
 use crate::Result;
 use futures::StreamExt;
 
-#[deprecated(note = "Please use [`EventStream`] instead")]
+#[deprecated(
+    note = "Please use [`skystreamer::stream::EventStream`] instead as it provides a more generic interface.",
+    since = "0.2.0"
+)]
 pub struct PostStream {
     // inner: Box<dyn futures::Stream<Item = Post> + Unpin + Send>,
     subscription: crate::RepoSubscription,
@@ -48,10 +51,27 @@ impl PostStream {
     }
 }
 
-/// A stream of every event from the firehose.
-/// Replaces the old [`PostStream`] type.
-/// 
-/// This stream will yield every single event from the firehose, 
+/// A helper for streaming events from the Firehose.
+///
+/// This struct wraps a [`crate::RepoSubscription`] and provides a stream of [`commit::Record`]s,
+/// which can be used to export a [`futures::Stream`]-compatible stream of [`commit::Record`]s.
+///
+/// # Example
+/// ```no_run
+/// use futures::{pin_mut, StreamExt};
+/// use skystreamer::{stream::EventStream, RepoSubscription};
+///
+/// let subscription = RepoSubscription::new("bsky.network").await.unwrap();
+/// let mut binding = EventStream::new(subscription);
+/// let event_stream = binding.stream().await?;
+///
+/// pin_mut!(event_stream);
+/// // let's stream the data from the firehose!
+/// while let Some(record) = event_stream.next().await {
+///    // Outputs every known item in the stream
+///    println!("{:?}", record);
+/// }
+/// ```
 pub struct EventStream {
     subscription: crate::RepoSubscription,
 }
@@ -84,4 +104,25 @@ impl EventStream {
             .flatten();
         Ok(stream)
     }
+}
+
+
+/// Simple helper function to create an [`EventStream`] from a domain directly.
+/// 
+/// ```no_run
+/// use futures::{pin_mut, StreamExt};
+/// use skystreamer::{stream::event_stream};
+/// 
+/// let mut event_stream = event_stream("bsky.network").await.unwrap();
+/// let stream = event_stream.stream().await.unwrap();
+/// 
+/// pin_mut!(stream);
+/// 
+/// while let Some(record) = stream.next().await {
+///     // do something with your data here
+/// }
+/// ```
+pub async fn event_stream(domain: &str) -> EventStream {
+    let subscription = crate::RepoSubscription::new(domain).await.unwrap();
+    EventStream::new(subscription)
 }
