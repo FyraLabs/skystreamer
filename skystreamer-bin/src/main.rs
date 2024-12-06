@@ -6,7 +6,7 @@ mod surreal_types;
 use clap::Parser;
 use color_eyre::Result;
 use futures::StreamExt;
-use skystreamer::{stream::PostStream, RepoSubscription};
+use skystreamer::{stream::EventStream, RepoSubscription};
 // use std::sync::Arc;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -78,14 +78,17 @@ impl Consumer {
 
     pub async fn start(&mut self) -> Result<()> {
         let subscription = RepoSubscription::new(&self.atproto_relay).await.unwrap();
-        let post_stream = PostStream::new(subscription);
+        let mut event_stream = EventStream::new(subscription);
+        let stream = event_stream.stream().await?;
 
-        let mut post_stream = post_stream.await;
-        let stream = post_stream.stream().await?;
+        // let post_stream = PostStream::new(subscription);
+
+        // let mut post_stream = post_stream.await;
 
         futures::pin_mut!(stream);
 
-        while let Some(post) = stream.next().await {
+        while let Some(skystreamer::types::commit::Record::Post(post)) = stream.next().await {
+            // if let skystreamer::types::commit::Record::Post(post) = post {
             if let Err(e) = self.exporter.export(&post).await {
                 tracing::error!("Failed to export post: {}", e);
             }
