@@ -106,18 +106,17 @@ impl EventStream {
     }
 }
 
-
 /// Simple helper function to create an [`EventStream`] from a domain directly.
-/// 
+///
 /// ```no_run
 /// use futures::{pin_mut, StreamExt};
 /// use skystreamer::{stream::event_stream};
-/// 
+///
 /// let mut event_stream = event_stream("bsky.network").await.unwrap();
 /// let stream = event_stream.stream().await.unwrap();
-/// 
+///
 /// pin_mut!(stream);
-/// 
+///
 /// while let Some(record) = stream.next().await {
 ///     // do something with your data here
 /// }
