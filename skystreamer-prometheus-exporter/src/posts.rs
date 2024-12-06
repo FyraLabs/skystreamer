@@ -45,6 +45,8 @@ impl PostsRegistry {
         tag_entry.1 += 1;
         tag_entry.0 = tokio::time::Instant::now();
 
+        self.tags_counter.reset();
+
         self.tags
             .retain(|_, (time, _)| time.elapsed() < tokio::time::Duration::from_secs(1800));
 
@@ -87,6 +89,8 @@ impl PostsRegistry {
 
         label_entry.1 += 1;
         label_entry.0 = tokio::time::Instant::now();
+
+        self.label_counter.reset();
 
         self.labels
             .retain(|_, (time, _)| time.elapsed() < tokio::time::Duration::from_secs(1800));
