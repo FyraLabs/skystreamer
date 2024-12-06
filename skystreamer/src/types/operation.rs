@@ -4,6 +4,9 @@ use atrium_api::{
     types::{CidLink, Collection},
 };
 
+/// An operation in a commit.
+///
+/// Wrapper around [`atrium_api::com::atproto::sync::subscribe_repos::RepoOp`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Operation {
     // app.bsky.feed.post
@@ -40,6 +43,7 @@ impl Operation {
         }
     }
 
+    /// Get the CID of the operation
     pub fn get_cid(&self) -> Option<CidLink> {
         match self {
             Operation::Post(cid, _)
@@ -53,6 +57,7 @@ impl Operation {
         }
     }
 
+    /// Get the operation type
     pub fn get_op(&self) -> RepoOp {
         match self {
             Operation::Post(_, op)

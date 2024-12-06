@@ -1,3 +1,5 @@
+//! Helper types for deserialize commit data from the firehose.
+
 use super::{actor::Profile, feed::*, graph::*, operation::Operation, Post};
 use crate::{Error, Result};
 use atrium_api::{
@@ -5,20 +7,38 @@ use atrium_api::{
 };
 use std::convert::From;
 
+/// A record is an event that happens on ATProto.
+/// It can be a post, or any kind of new event emitted from the network itself.
 #[derive(Debug, Clone)]
 pub enum Record {
+    /// A new post
     Post(Box<Post>),
+    /// A user blocks another user
     Block(Box<BlockEvent>),
+    /// Someone likes a post
     Like(Box<LikeEvent>),
+    /// Someone follows another user
     Follow(Box<FollowEvent>),
+    /// Someone reposts a post
     Repost(Box<RepostEvent>),
+    /// A new list item
     ListItem(Box<ListItemEvent>),
+    /// A new user being created on the network
     Profile(Box<Profile>),
     // Other(Box<serde::de::value::>),
+    /// Other, (yet) unsupported record types
+    ///
+    /// This is a catch-all for any record type that is not yet supported by the library.
+    ///
+    /// Returns a serde_json::Value, which can be used to inspect the raw data or manually
+    /// deserialize it if needed.
     Other((Operation, Box<serde_json::Value>)),
 }
 
 impl Record {
+    /// Deserialize an operation into the Record enum, given a commit.
+    /// 
+    /// Returns all the records that can be extracted from the operation.
     pub async fn from_op(op: &Operation, commit: &ACommit) -> Result<Vec<Self>> {
         let mut blocks = commit.blocks.as_slice();
         let mut records = vec![];
@@ -36,12 +56,6 @@ impl Record {
             .ok_or_else(|| Error::ItemNotFound(op.get_cid(), items.len()))?;
         match op {
             Operation::Post(cidlink, _) => {
-                // let post_record: bsky::feed::post::Record =
-                //     serde_ipld_dagcbor::from_reader(&mut item.as_slice())?;
-                // let post_record = bsky::feed::post::Record
-                // let post_record = bsky::feed::post::Record::from(post_record);
-                // records.push(Record::Post(post));
-                // println!("{:?}", post_record);
                 records.push(Record::Post(Box::new(Post::from_record(
                     commit.repo.clone(),
                     cidlink.clone().unwrap(),
@@ -118,6 +132,10 @@ impl Record {
     }
 }
 
+
+/// A singular commit, containing a list of operations.
+/// 
+/// This is a wrapper around [`atrium_api::com::atproto::sync::subscribe_repos::Commit`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Commit {
     pub operations: Vec<Operation>,
@@ -142,6 +160,11 @@ impl From<&ACommit> for Commit {
     }
 }
 
+/// Extract a post record from a commit.
+#[deprecated(
+    note = "Please use [`Record::from_op`] instead.",
+    since = "0.2.0"
+)]
 pub async fn extract_post_record(
     op: &atrium_api::com::atproto::sync::subscribe_repos::RepoOp,
     mut blocks: &[u8],
@@ -164,10 +187,13 @@ pub async fn extract_post_record(
 }
 
 impl Commit {
+
+    /// Get the inner commit data, in case you need to access the raw commit.
     pub fn inner(&self) -> &ACommit {
         &self.inner_commit
     }
 
+    /// Extracts all records from the commit.
     pub async fn extract_records(&self) -> Vec<Record> {
         let mut records = vec![];
 

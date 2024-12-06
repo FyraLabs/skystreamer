@@ -23,7 +23,7 @@ use tokio_tungstenite::{
 };
 use types::{operation::Operation, PostData, Subscription};
 // use types::{CommitHandler, PostData, Subscription};
-
+/// Error handling for the skystreamer crate
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("Failed to connect to websocket: {0}")]
@@ -140,6 +140,8 @@ fn is_post_creation(op: &atrium_api::com::atproto::sync::subscribe_repos::RepoOp
 }
 
 // convert a commit to
+#[deprecated(note = "Please use [`Record::from_op`] instead.", since = "0.2.0")]
+#[allow(deprecated)]
 pub async fn handle_commit(commit: &Commit) -> Result<Vec<PostData>> {
     let mut posts = vec![];
     for op in &commit.ops {

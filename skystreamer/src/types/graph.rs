@@ -1,4 +1,6 @@
-//! Helper types for bsky graph events
+//! Helper types for bsky graph events, detailing user
+//! connections. These events are emitted when a user does something related
+//! to another user.
 
 use crate::util::datetime_to_chrono;
 use atrium_api::{
@@ -9,6 +11,8 @@ use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 
 /// An event where someone blocks someone else :(
+/// 
+/// This event is emitted when someone blocks another user on the network.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockEvent {
     pub author: Did,
