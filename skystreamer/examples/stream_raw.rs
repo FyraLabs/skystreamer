@@ -25,8 +25,8 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // println!("{:?}", record);
 
-        if let skystreamer::types::commit::Record::Other(_) = record {
-            println!("{:?}", record);
+        if let skystreamer::types::commit::Record::Other(val) = record {
+            println!("{:?}", val);
         }
     }
 

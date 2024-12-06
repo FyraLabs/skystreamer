@@ -14,7 +14,8 @@ pub enum Record {
     Repost(Box<RepostEvent>),
     ListItem(Box<ListItemEvent>),
     Profile(Box<Profile>),
-    Other(String),
+    // Other(Box<serde::de::value::>),
+    Other((Operation, Box<serde_json::Value>)),
 }
 
 impl Record {
@@ -105,7 +106,11 @@ impl Record {
 
             other => {
                 tracing::trace!("Unhandled operation: {:?}", other);
-                records.push(Record::Other(format!("{:?}", other)));
+                // todo: some kind of generic Serde value?
+                records.push(Record::Other(*Box::new((
+                    other.clone(),
+                    serde_ipld_dagcbor::from_reader(&mut item.as_slice())?,
+                ))));
             }
         }
 

@@ -6,14 +6,14 @@
 use crate::types::{commit, Post};
 use crate::Result;
 use futures::StreamExt;
-// a commit turns into a block of Posts
-// is there a way to turn a block of posts into a stream of individual posts?
 
+#[deprecated(note = "Please use [`EventStream`] instead")]
 pub struct PostStream {
     // inner: Box<dyn futures::Stream<Item = Post> + Unpin + Send>,
     subscription: crate::RepoSubscription,
 }
 
+#[allow(deprecated)]
 impl PostStream {
     pub async fn new(inner: crate::RepoSubscription) -> Self {
         PostStream {
@@ -50,6 +50,8 @@ impl PostStream {
 
 /// A stream of every event from the firehose.
 /// Replaces the old [`PostStream`] type.
+/// 
+/// This stream will yield every single event from the firehose, 
 pub struct EventStream {
     subscription: crate::RepoSubscription,
 }
