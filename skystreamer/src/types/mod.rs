@@ -1,4 +1,4 @@
-use crate::Result;
+use crate::{util::datetime_to_chrono, Result};
 use atrium_api::{
     app::bsky::{
         embed::{
@@ -13,6 +13,11 @@ use cid::Cid;
 use ipld_core::ipld::Ipld;
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
+pub mod actor;
+pub mod commit;
+pub mod feed;
+pub mod graph;
+pub mod operation;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Media {
@@ -205,6 +210,29 @@ pub struct Post {
     pub embed: Option<Embed>,
 }
 
+impl Post {
+    /// Directly create a Post from a Record type by automatically creating a new PostData
+    pub fn from_record(author: Did, cid: CidLink, record: PostRecord) -> Self {
+        Self::from(PostData::new(author, cid, record))
+    }
+
+    pub fn get_post_media(&self) -> Vec<Media> {
+        let mut media = vec![];
+        if let Some(embed) = self.embed.as_ref() {
+            match embed {
+                crate::types::Embed::RecordWithMedia(_, m) => {
+                    media.extend(m.iter().cloned());
+                }
+                crate::types::Embed::Media(m) => {
+                    media.extend(m.iter().cloned());
+                }
+                _ => {}
+            }
+        }
+        media
+    }
+}
+
 impl From<PostData> for Post {
     fn from(value: PostData) -> Self {
         let record = value.record.data;
@@ -212,7 +240,7 @@ impl From<PostData> for Post {
             author: value.author,
             // because for some reason we can't access the inner chrono::DateTime
             // we will have to reparse it from string
-            created_at: record.created_at.as_str().parse().unwrap(),
+            created_at: datetime_to_chrono(&record.created_at),
             text: record.text,
             id: value.cid,
             language: record

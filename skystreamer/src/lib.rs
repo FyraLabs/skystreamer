@@ -1,12 +1,13 @@
 // pub mod config;
 pub mod stream;
 pub mod types;
+pub mod util;
 
 use std::convert::Infallible;
 pub const BLUESKY_FEED_DOMAIN: &str = "bsky.network";
 use crate::types::Frame;
 use atrium_api::{
-    app::bsky::feed::{post::Record, Post as BPost},
+    app::bsky::feed::Post as BPost,
     com::atproto::sync::subscribe_repos::{Commit, NSID},
     types::{CidLink, Collection},
 };
@@ -15,8 +16,12 @@ use futures::StreamExt;
 
 use ipld_core::ipld::Ipld;
 use tokio::net::TcpStream;
-use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
-use types::{PostData, Subscription};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{client::IntoClientRequest, Message},
+    MaybeTlsStream, WebSocketStream,
+};
+use types::{operation::Operation, PostData, Subscription};
 // use types::{CommitHandler, PostData, Subscription};
 
 #[derive(thiserror::Error, Debug)]
@@ -43,12 +48,22 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 pub struct RepoSubscription {
     stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    _commit_cursor: u64,
+    timeout: Option<tokio::time::Duration>,
 }
 
 impl RepoSubscription {
     pub async fn new(bgs: &str) -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        let (stream, _) = connect_async(format!("wss://{bgs}/xrpc/{NSID}")).await?;
-        Ok(RepoSubscription { stream })
+        // todo: somehow get the websocket to update the damn params
+        let request = format!("wss://{bgs}/xrpc/{NSID}").into_client_request()?;
+        // request.
+        let (stream, res) = connect_async(request).await?;
+        tracing::debug!("Connected to websocket: {:?}", res);
+        Ok(RepoSubscription {
+            stream,
+            _commit_cursor: 0,
+            timeout: None,
+        })
     }
 
     // pub async fn run(
@@ -80,12 +95,29 @@ impl RepoSubscription {
         &mut self,
     ) -> impl futures::Stream<Item = std::result::Result<Commit, Box<dyn std::error::Error>>> + '_
     {
+        let a = self.stream.get_config();
+        tracing::debug!("Stream config: {:?}", a);
         futures::stream::unfold(self, |this| async move {
             loop {
-                if let Some(Ok(Frame::Message(Some(t), message))) = this.next().await {
-                    if t.as_str() == "#commit" {
+                let timeout_duration = this
+                    .timeout
+                    .unwrap_or_else(|| tokio::time::Duration::from_secs(30));
+
+                match tokio::time::timeout(timeout_duration, this.next()).await {
+                    Ok(Some(Ok(Frame::Message(Some(t), message)))) if t.as_str() == "#commit" => {
+                        // tracing::trace!("Received commit message: {:?}", message);
                         let commit = serde_ipld_dagcbor::from_reader(message.body.as_slice());
+                        // tracing::trace!("Decoded commit: {:?}", commit);
                         return Some((commit.map_err(|e| e.into()), this));
+                    }
+                    Ok(Some(m)) => {
+                        tracing::trace!("Unexpected message: {:?}", m);
+                        continue;
+                    }
+                    Ok(None) => return None,
+                    Err(elapsed) => {
+                        tracing::warn!(?elapsed, "Timeout waiting for next message");
+                        return None;
                     }
                 }
             }
@@ -103,47 +135,26 @@ impl Subscription for RepoSubscription {
     }
 }
 
-pub async fn extract_post_record(
-    op: &atrium_api::com::atproto::sync::subscribe_repos::RepoOp,
-    mut blocks: &[u8],
-) -> Result<Record> {
-    let (items, _) = rs_car::car_read_all(&mut blocks, true).await?;
-
-    let (_, item) = items
-        .iter()
-        .find(|(cid, _)| {
-            let converted_cid = CidLink(
-                types::CidOld::from(*cid)
-                    .try_into()
-                    .expect("invalid CID conversion"),
-            );
-            Some(converted_cid) == op.cid
-        })
-        .ok_or_else(|| {
-            // eyre!(
-            //     "Could not find item with operation cid {:?} out of {} items",
-            //     op.cid,
-            //     items.len()
-            // )
-
-            Error::ItemNotFound(op.cid.clone(), items.len())
-        })?;
-
-    Ok(serde_ipld_dagcbor::from_reader(&mut item.as_slice())?)
-}
-
 fn is_post_creation(op: &atrium_api::com::atproto::sync::subscribe_repos::RepoOp) -> bool {
     matches!(op.action.as_str(), "create") && op.path.split('/').next() == Some(BPost::NSID)
 }
+
 // convert a commit to
 pub async fn handle_commit(commit: &Commit) -> Result<Vec<PostData>> {
     let mut posts = vec![];
     for op in &commit.ops {
+        // let commit_type = op.path.split('/').next().unwrap_or_default();
+
+        // todo: remove this check
+        let commit_type = Operation::from_op(op.clone());
+        tracing::debug!("New Commit type: {:?}", commit_type);
+
         if !is_post_creation(op) {
+            // tracing::debug!("Skipping non-post creation op: {:?}", op);
             continue;
         }
 
-        let record = extract_post_record(op, &commit.blocks).await?;
+        let record = types::commit::extract_post_record(op, &commit.blocks).await?;
         // posts.push(record.data);
         let post_data = PostData::new(commit.repo.clone(), commit.commit.clone(), record);
         posts.push(post_data);
