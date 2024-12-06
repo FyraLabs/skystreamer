@@ -86,9 +86,9 @@ impl EventStream {
 
     /// Start streaming events from the firehose,
     /// and flatten blocks of commits into individual records.
-    /// 
+    ///
     /// This function returns a [`futures::Stream`] of [`commit::Record`]s.
-    /// 
+    ///
     pub async fn stream(&mut self) -> Result<impl futures::Stream<Item = commit::Record> + '_> {
         let block_stream = self.subscription.stream_commits();
 

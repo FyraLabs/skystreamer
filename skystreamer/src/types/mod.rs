@@ -197,7 +197,7 @@ impl From<RecordEmbedRefs> for Embed {
 }
 
 /// A post on the network
-/// 
+///
 /// An idiomatic wrapper type around [`atrium_api::app::bsky::feed::post::Record`]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Post {
@@ -219,13 +219,12 @@ impl Post {
         Self::from(PostData::new(author, cid, record))
     }
 
-
     /// Get media associated with the post, if any
-    /// 
+    ///
     /// Before this was implemented as a method,
     /// you were required to match each variant of the Embed union type from
     /// ATrium to get the media associated with the post.
-    /// 
+    ///
     /// This function abstracts that away and returns a vector of Media types
     pub fn get_post_media(&self) -> Vec<Media> {
         let mut media = vec![];
@@ -351,7 +350,6 @@ impl PostData {
 
     // pub fn
 }
-
 
 /// Downloads media associated with a post, returning bytes of the media
 pub async fn download_media<C>(

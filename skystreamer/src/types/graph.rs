@@ -11,7 +11,7 @@ use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 
 /// An event where someone blocks someone else :(
-/// 
+///
 /// This event is emitted when someone blocks another user on the network.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockEvent {

@@ -37,7 +37,7 @@ pub enum Record {
 
 impl Record {
     /// Deserialize an operation into the Record enum, given a commit.
-    /// 
+    ///
     /// Returns all the records that can be extracted from the operation.
     pub async fn from_op(op: &Operation, commit: &ACommit) -> Result<Vec<Self>> {
         let mut blocks = commit.blocks.as_slice();
@@ -132,9 +132,8 @@ impl Record {
     }
 }
 
-
 /// A singular commit, containing a list of operations.
-/// 
+///
 /// This is a wrapper around [`atrium_api::com::atproto::sync::subscribe_repos::Commit`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Commit {
@@ -161,10 +160,7 @@ impl From<&ACommit> for Commit {
 }
 
 /// Extract a post record from a commit.
-#[deprecated(
-    note = "Please use [`Record::from_op`] instead.",
-    since = "0.2.0"
-)]
+#[deprecated(note = "Please use [`Record::from_op`] instead.", since = "0.2.0")]
 pub async fn extract_post_record(
     op: &atrium_api::com::atproto::sync::subscribe_repos::RepoOp,
     mut blocks: &[u8],
@@ -187,7 +183,6 @@ pub async fn extract_post_record(
 }
 
 impl Commit {
-
     /// Get the inner commit data, in case you need to access the raw commit.
     pub fn inner(&self) -> &ACommit {
         &self.inner_commit

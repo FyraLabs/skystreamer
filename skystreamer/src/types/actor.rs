@@ -37,7 +37,6 @@ pub struct Profile {
 }
 
 impl Profile {
-
     /// Create a new profile from their record stream.
     /// Used in the [`crate::stream::EventStream`] to create a profile from a commit.
     pub fn new(did: Did, record: bsky::actor::profile::Record, cid: Option<CidLink>) -> Self {
