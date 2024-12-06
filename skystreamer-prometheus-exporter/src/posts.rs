@@ -265,7 +265,7 @@ impl PostsRegistry {
 
         {
             // Languages of the posts
-            let langs = post
+            let mut langs = post
                 .language
                 .iter()
                 .map(|lang| {
@@ -290,6 +290,9 @@ impl PostsRegistry {
                     processed_language
                 })
                 .collect::<Vec<_>>();
+
+            // sort the languages
+            langs.sort();
 
             langs.iter().for_each(|lang| {
                 self.language_counter_individual
